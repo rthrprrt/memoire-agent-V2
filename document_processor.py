@@ -9,6 +9,8 @@ import logging
 import hashlib
 # This line imports Optional, List, and Tuple for type hinting
 from typing import List, Tuple, Optional
+import PyPDF2
+import config
 
 # Configure logging
 # Mise à jour du format pour inclure le nom du module pour plus de clarté
@@ -148,3 +150,32 @@ def chunk_text(text: str, chunk_size: int = config.CHUNK_SIZE, chunk_overlap: in
 
     # Remove potentially empty chunks resulting from splitting logic
     return [chunk for chunk in chunks if chunk.strip()]
+
+def extract_text_from_pdf(file_path: str) -> Optional[str]:
+    """Extracts text content from a PDF file."""
+    if not os.path.exists(file_path):
+        logging.error(f"PDF file not found: {file_path}")
+        return None
+    if not file_path.lower().endswith(".pdf"):
+        logging.error(f"File is not a PDF: {file_path}")
+        return None
+
+    logging.info(f"Extracting text from PDF: {file_path}")
+    text = ""
+    try:
+        with open(file_path, 'rb') as pdf_file: # Open in binary read mode
+            reader = PyPDF2.PdfReader(pdf_file)
+            num_pages = len(reader.pages)
+            logging.info(f"PDF has {num_pages} pages.")
+            for page_num in range(num_pages):
+                page = reader.pages[page_num]
+                page_text = page.extract_text()
+                if page_text: # extract_text() peut retourner None
+                    text += page_text + "\n" # Ajouter un saut de ligne entre les pages
+                else:
+                     logging.warning(f"Could not extract text from page {page_num + 1} of {file_path}.")
+        logging.info(f"Successfully extracted text from PDF (length: {len(text)} chars).")
+        return text.strip() if text else None
+    except Exception as e:
+        logging.error(f"Error reading PDF file {file_path}: {e}", exc_info=True)
+        return None

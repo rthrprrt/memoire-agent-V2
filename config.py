@@ -18,6 +18,12 @@ VECTOR_DB_DIR = os.path.join(BASE_DIR, "vector_db")
 DEFAULT_PLAN_FILE = os.path.join(OUTPUT_DIR, "report_plan.json")
 DEFAULT_REPORT_OUTPUT = os.path.join(OUTPUT_DIR, "apprenticeship_report.docx")
 DEFAULT_PDF_OUTPUT = os.path.join(OUTPUT_DIR, "apprenticeship_report.pdf")
+GUIDELINES_PDF_PATH = os.path.join(BASE_DIR, "Mémoire_Alternance_Job.pdf")
+
+# Mettez le chemin exact vers votre fichier PDF contenant les attendus
+# Vous pouvez le placer dans le dossier racine du projet ou un sous-dossier 'reference_docs' par exemple.
+GUIDELINES_PDF_PATH = "C:/Users/arthu/Desktop/agent_redaction/Mémoire_Alternance_Job.pdf" # <-- METTEZ LE VRAI NOM/CHEMIN ICI
+REFERENCE_DOCS_COLLECTION_NAME = "reference_docs" # Nom de la nouvelle collection ChromaDB
 
 # --- Vector Database Configuration ---
 VECTOR_DB_COLLECTION_NAME = "journal_entries"
@@ -69,10 +75,15 @@ os.makedirs(VECTOR_DB_DIR, exist_ok=True)
 if not DEEPSEEK_API_KEY:
     raise ValueError("DEEPSEEK_API_KEY not found in .env file. Please set it.")
 
-# ++ AJOUT POUR EMBEDDINGS LOCAUX ++
 # Modèle Sentence Transformer choisi (multilingue, équilibré)
 LOCAL_EMBEDDING_MODEL_NAME = "paraphrase-multilingual-mpnet-base-v2"
 # Spécifier 'cpu' ou 'cuda' si vous avez un GPU Nvidia compatible et PyTorch installé avec CUDA
 # Commencer par 'cpu' est plus sûr si vous n'êtes pas sûr de votre config GPU.
 LOCAL_EMBEDDING_DEVICE = "cpu"
-# ++ FIN AJOUT ++
+
+if not os.path.exists(GUIDELINES_PDF_PATH):
+     # On met un warning plutôt qu'une erreur, car l'agent peut fonctionner sans,
+     # mais ce sera moins bien guidé.
+     print(f"WARNING: Guidelines PDF not found at specified path: {GUIDELINES_PDF_PATH}")
+     print("Reference document processing will be skipped.")
+     # Vous pourriez changer en `raise FileNotFoundError(...)` si c'est essentiel.
