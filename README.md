@@ -111,4 +111,3 @@ The next phase focuses on transforming the current pipeline into a more autonomo
 *   More sophisticated memory techniques (vectorized conversation history).
 *   GUI/Web interface (Streamlit/Flask).
 *   Robust error handling and retry logic for API calls/tools.
-*   Fine-tuning local embedding or LLM models on specific data (advanced).
