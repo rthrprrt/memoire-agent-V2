@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ActionConfirmationRequest",
+  "description": "Schema for a request sent from the Orchestrator to the user, asking for confirmation before proceeding with a potentially significant or irreversible action.",
+  "type": "object",
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier (UUID v4 recommended) for this confirmation request."
+    },
+    "action_description": {
+      "type": "string",
+      "description": "A clear, concise description of the action that requires user confirmation (e.g., 'Proceed with generating the full report draft?' 'Delete section X from the plan?' 'Apply suggested changes to section Y?')."
+    },
+    "action_details": {
+      "type": "object",
+      "description": "Optional structured details providing more context about the action and its potential consequences.",
+      "properties": {
+         "affected_items": { "type": "array", "items": {"type": "string"}, "description": "List of items (e.g., section IDs, file names) affected by the action."},
+         "potential_impact": { "type": "string", "description": "Brief description of the potential impact or outcome of the action."},
+         "estimated_time_or_cost": { "type": "string", "description": "Optional estimation of time or resource cost associated with the action."}
+      },
+      "additionalProperties": true 
+    },
+    "confirmation_prompt": {
+        "type": "string",
+        "description": "The specific question posed to the user (e.g., 'Do you approve this action?').",
+        "default": "Do you want to proceed with this action?"
+    },
+    "confirmation_options": {
+        "type": "array",
+        "description": "User-facing labels for the confirmation choices, typically Yes/No.",
+        "items": {"type": "string"},
+        "minItems": 2,
+        "maxItems": 2, 
+        "default": ["Confirm", "Cancel"] 
+    }
+  },
+  "required": [
+    "request_id", 
+    "action_description",
+    "confirmation_prompt"
+  ]
+}

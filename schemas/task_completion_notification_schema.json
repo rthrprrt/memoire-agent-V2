@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "description": "The ID of the completed task."
+    },
+    "worker_id": {
+      "type": "string",
+      "description": "The ID of the worker who completed the task."
+    },
+    "completion_status": {
+      "type": "string",
+      "enum": ["success", "failure"],
+      "description": "The status of the task completion."
+    },
+    "results": {
+      "type": "object",
+      "description": "The results or outputs of the completed task.",
+      "additionalProperties": true
+    }
+  },
+  "required": ["task_id", "worker_id", "completion_status"]
+}

@@ -1,0 +1,32 @@
+{
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "description": "Unique identifier for the task."
+    },
+    "worker_id": {
+      "type": "string",
+      "description": "Identifier for the worker assigned to the task."
+    },
+    "task_description": {
+      "type": "string",
+      "description": "Description of the task to be performed."
+    },
+    "parameters": {
+      "type": "object",
+      "description": "Parameters specific to the task, as a flexible JSON object."
+    },
+    "context": {
+      "type": "object",
+      "description": "Relevant context or dependencies for the task (e.g., related data analysis results, report sections).",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "task_id",
+    "worker_id",
+    "task_description",
+    "parameters"
+  ]
+}

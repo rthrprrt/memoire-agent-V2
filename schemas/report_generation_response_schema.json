@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ReportGenerationResponse",
+  "description": "Schema for the response after attempting a report generation task.",
+  "type": "object",
+  "properties": {
+    "request_id": { "type": "string", "format": "uuid", "description": "The UUID of the original ReportGenerationRequest." },
+    "status": {
+      "type": "string", "description": "The final status of the report generation task.",
+      "enum": [ "queued", "in_progress", "completed", "partially_completed", "failed" ]
+    },
+    "report_details": {
+      "type": ["object", "null"], "description": "Details about the generated report file if status is 'completed' or 'partially_completed'.",
+      "properties": {
+        "file_path": { "type": "string", "description": "Path to the generated file." },
+        "file_url": { "type": "string", "format": "uri", "description": "Optional URL to the generated file." },
+        "file_format": { "type": "string", "enum": ["DOCX"], "description": "Format of the generated file." },
+        "file_size_bytes": { "type": "integer", "minimum": 0, "description": "Optional size of the file in bytes." },
+        "content_summary": { "type": "string", "description": "Optional brief summary of the generated content." },
+        "generation_metadata": {
+            "type": "object", "description": "Metadata about the generation process (optional).",
+            "properties": {
+                "sections_completed": { "type": "array", "items": {"type": "string"}, "description": "List of section IDs successfully generated."},
+                "sections_failed": { "type": "array", "items": {"type": "string"}, "description": "List of section IDs that failed."}
+            }
+        }
+      },
+      "required": ["file_format"], "oneOf": [ { "required": ["file_path"] }, { "required": ["file_url"] } ]
+    },
+    "error_details": {
+      "type": "object", "description": "Details about the error if status is 'failed'.",
+      "properties": {
+        "error_code": { "type": "string", "description": "Standardized error code (e.g., 'PLAN_NOT_FOUND', 'LLM_GENERATION_FAILED', 'FILE_SAVE_ERROR')." },
+        "error_message": { "type": "string", "description": "Human-readable description of the error." },
+        "failed_section_id": { "type": "string", "description": "Optional ID of the specific section where failure occurred." }
+      },
+      "required": ["error_code", "error_message"]
+    },
+    "worker_id": { "type": "string", "description": "Worker ID (optional)." },
+    "processing_start_time": { "type": "string", "format": "date-time", "description": "Start timestamp (ISO 8601) (optional)." },
+    "processing_end_time": { "type": "string", "format": "date-time", "description": "End timestamp (ISO 8601) (optional)." },
+    "processing_duration_ms": { "type": "integer", "minimum": 0, "description": "Duration in ms (optional)." }
+  },
+  "required": [ "request_id", "status" ],
+  "allOf": [
+    { "if": { "properties": { "status": { "enum": ["completed", "partially_completed"] } } }, "then": { "required": ["report_details"] } },
+    { "if": { "properties": { "status": { "const": "failed" } } }, "then": { "required": ["error_details"] } }
+  ]
+}
+

@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "UserInputResponse",
+  "description": "Schema for the response containing the user's input, sent back to the Orchestrator.",
+  "type": "object",
+  "properties": {
+    "request_id": { "type": "string", "format": "uuid", "description": "The UUID of the original UserInputRequest." },
+    "user_response": {
+      "description": "The actual input provided by the user, or null if skipped/timeout/invalid.",
+      "oneOf": [
+        { "type": "string", "description": "Text input, single choice value, or file reference." },
+        { "type": "boolean", "description": "Boolean for confirmation." },
+        { "type": "array", "items": { "type": "string" }, "description": "List of selected choice values for multiple selection." },
+        { "type": "null" }
+      ]
+    },
+    "response_status": {
+        "type": "string",
+        "description": "Indicates the outcome of the user input request.",
+        "enum": [ "provided", "skipped", "timeout", "invalid", "failed" ],
+        "default": "provided"
+    },
+    "error_details": {
+      "type": "object",
+      "description": "Details about the error if status is 'invalid' or 'failed'.",
+      "properties": {
+        "error_code": {
+          "type": "string",
+          "description": "Error code (e.g., 'VALIDATION_FAILED', 'TIMEOUT_ERROR', 'UI_ERROR')."
+        },
+        "error_message": {
+          "type": "string",
+          "description": "Description of why the input is invalid or why the interaction failed."
+        }
+      },
+      "required": [
+        "error_code",
+        "error_message"
+      ]
+    },
+    "timestamp": { "type": "string", "format": "date-time", "description": "Timestamp (ISO 8601 format) when the response was finalized." }
+  },
+  "required": [ "request_id", "user_response", "response_status", "timestamp" ],
+  "if": {
+    "properties": { "response_status": { "enum": ["invalid", "failed"] } }
+  },
+  "then": {
+    "required": ["error_details"]
+    }
+}

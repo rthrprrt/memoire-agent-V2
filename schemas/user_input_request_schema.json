@@ -1,0 +1,118 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "UserInputRequest",
+  "description": "Schema for a request sent from the Orchestrator (via the system interface) to the user, prompting for input or a decision.",
+  "type": "object",
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier (UUID v4 recommended) for this specific input request."
+    },
+    "input_type": {
+      "type": "string",
+      "description": "Specifies the kind of input expected from the user.",
+      "enum": [
+        "text",
+        "choice",
+        "confirmation",
+        "file_upload"
+      ]
+    },
+    "prompt_message": {
+      "type": "string",
+      "description": "The clear and concise message or question to display to the user."
+    },
+    "options": {
+      "type": "array",
+      "description": "A list of predefined choices for the user. Required only if input_type is 'choice'.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string",
+            "description": "The internal value associated with the choice."
+          },
+          "label": {
+            "type": "string",
+            "description": "The user-facing text label for the choice."
+          }
+        },
+        "required": [
+          "value",
+          "label"
+        ]
+      },
+      "minItems": 1
+    },
+    "default_value": {
+      "description": "Optional pre-filled or suggested value for the input. Type depends on input_type.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "input_constraints": {
+      "type": "object",
+      "description": "Optional constraints specific to the input type.",
+      "properties": {
+        "max_length": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum allowed length for 'text' input."
+        },
+        "min_length": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Minimum required length for 'text' input."
+        },
+        "pattern": {
+          "type": "string",
+          "format": "regex",
+          "description": "Regular expression pattern the 'text' input must match."
+        },
+        "allow_multiple_choices": {
+          "type": "boolean",
+          "default": false,
+          "description": "For 'choice' type, allow selecting multiple options. If true, user_response will be an array."
+        },
+        "allowed_file_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "For 'file_upload', list of allowed extensions (e.g., ['.docx', '.pdf'])."
+        }
+      }
+    },
+    "context": {
+      "type": "object",
+      "description": "Optional context related to the request (e.g., the section ID being discussed, relevant data).",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "request_id",
+    "input_type",
+    "prompt_message"
+  ],
+  "if": {
+    "properties": {
+      "input_type": {
+        "const": "choice"
+      }
+    }
+  },
+  "then": {
+    "required": [
+      "options"
+    ]
+  }
+}

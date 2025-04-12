@@ -1,0 +1,44 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "ReportPlanUpdateConfirmation",
+    "description": "Schema for the response confirming the outcome of a ReportPlanUpdateRequest.",
+    "type": "object",
+    "properties": {
+        "request_id": {
+            "type": "string", "format": "uuid",
+            "description": "The UUID of the original ReportPlanUpdateRequest."
+        },
+        "status": {
+            "type": "string", "description": "Indicates if the update was successful, failed validation, or had a general failure.",
+            "enum": ["success", "failure", "validation_error"]
+        },
+        "updated_plan_id": {
+            "type": "string", "description": "Identifier of the plan that was updated (Required if status is 'success')."
+        },
+        "error_details": {
+           "type": "object",
+           "description": "Details about the error if the update failed.",
+           "properties": {
+               "error_code": { "type": "string", "description": "Error code (e.g., 'VALIDATION_FAILED', 'SAVE_FAILED', 'CONCURRENT_MODIFICATION')." },
+               "error_message": { "type": "string", "description": "Human-readable description of the error or validation issues." },
+               "validation_errors": { "type": "array", "items": {"type": "string"}, "description": "List of specific validation errors (only if error_code is 'VALIDATION_FAILED')." }
+           },
+           "required": ["error_code", "error_message"],
+           "if": { "properties": { "error_code": { "const": "VALIDATION_FAILED" } } },
+           "then": { "required": ["validation_errors"] }
+        },
+        "timestamp": {
+            "type": "string", "format": "date-time",
+            "description": "Timestamp (ISO 8601 format) of the confirmation."
+        },
+    },
+    "required": [
+        "request_id",
+        "status",
+        "timestamp"
+    ],
+    "allOf": [
+        { "if": { "properties": { "status": { "const": "success" } } }, "then": { "required": [ "updated_plan_id" ] } },
+        { "if": { "properties": { "status": { "enum": [ "failure", "validation_error" ] } } }, "then": { "required": [ "error_details" ] } }
+    ]
+}

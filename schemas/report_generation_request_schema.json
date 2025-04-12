@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ReportGenerationRequest",
+  "description": "Schema for a request sent from the Orchestrator to the Worker to generate a report or a specific section of it. Specifies type, format, content scope, and context sources.",
+  "type": "object",
+  "properties": {
+    "request_id": { "type": "string", "format": "uuid", "description": "Unique identifier (UUID v4 recommended) for this report generation request." },
+    "report_type": {
+      "type": "string",
+      "description": "Specifies the scope of the generation task. (Future values might include 'progress_summary', 'executive_summary')",
+      "enum": [ "apprenticeship_report_full", "apprenticeship_report_section" ]
+    },
+    "desired_format": {
+      "type": "string",
+      "description": "The desired output file format. (Future values might include 'PDF', 'HTML')",
+      "enum": [ "DOCX" ],
+      "default": "DOCX"
+    },
+    "sections_to_include": {
+      "type": "array", "description": "List of unique section IDs (strings) defining structure and scope for 'full' report type. Order matters.",
+      "items": { "type": "string", "description": "A unique identifier for a report section." },
+      "uniqueItems": true
+    },
+    "section_id_to_generate": { "type": "string", "description": "Unique ID of the single section for 'section' report type." },
+    "context_sources": {
+      "type": "array", "description": "Optional list of specific data sources or results to explicitly consider.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source_type": { "type": "string", "enum": [ "data_analysis_result", "raw_text", "file_path" ] },
+          "identifier": { "type": "string", "description": "ID or path related to source_type." },
+          "content": { "type": "string", "description": "Actual text content if source_type is 'raw_text'." }
+        },
+        "required": ["source_type"],
+        "if": { "properties": { "source_type": { "const": "raw_text" } } },
+        "then": { "required": ["content"], "not": { "required": ["identifier"] } },
+        "else": { "required": ["identifier"], "not": { "required": ["content"] } }
+      }
+    },
+    "report_title": { "type": "string", "description": "Optional title for the generated report." },
+    "report_author": { "type": "string", "description": "Optional author name for the report." },
+    "target_date": { "type": "string", "format": "date", "description": "Optional target date for the report context (format: YYYY-MM-DD)." },
+    "generation_instructions": { "type": "string", "description": "Optional general instructions for the LLM regarding style or tone." }
+  },
+  "required": [ "request_id", "report_type", "desired_format" ],
+  "allOf": [
+    { "if": { "properties": { "report_type": { "const": "apprenticeship_report_full" } } }, "then": { "required": ["sections_to_include"] } },
+    { "if": { "properties": { "report_type": { "const": "apprenticeship_report_section" } } }, "then": { "required": ["section_id_to_generate"] } }
+  ]
+}

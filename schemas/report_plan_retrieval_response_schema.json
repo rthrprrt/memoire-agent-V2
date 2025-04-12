@@ -1,0 +1,104 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ReportPlanRetrievalResponse", 
+  "description": "Schema for the response containing the retrieved report plan structure.",
+  "type": "object",
+  "definitions": {
+    "reportSection": {
+      "type": "object",
+      "properties": {
+        "section_id": {
+          "type": "string",
+          "description": "Unique identifier for this section."
+        },
+        "title": {
+          "type": "string",
+          "description": "The title of the section."
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Hierarchical level of the section (e.g., 1 for main chapter)."
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Order of this section among its siblings."
+        },
+        "section_status": {
+          "type": "string",
+          "enum": ["pending", "drafting", "drafted", "failed", "reviewing", "approved"],
+          "description": "Current generation/validation status of this specific section (optional, included if requested).",
+          "default": "pending" 
+        },
+        "subsections": {
+          "type": "array",
+          "description": "List of nested subsections, using the same structure recursively.",
+          "items": { "$ref": "#/definitions/reportSection" }
+        }
+      },
+      "required": [ "section_id", "title", "level", "order" ]
+    }
+  },
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "The unique identifier (UUID) of the original ReportPlanRetrievalRequest."
+    },
+    "status": {
+       "type": "string",
+       "enum": ["success", "not_found", "error"],
+       "description": "Status of the retrieval operation." 
+    },
+    "report_plan": {
+      "type": ["object", "null"],
+      "description": "The main report plan structure (null if status is not 'success').",
+      "properties": {
+        "plan_id": { "type": "string", "description": "Identifier of the retrieved plan (e.g., 'current', 'v2')."},
+        "title": { "type": "string", "description": "Overall title of the report."},
+        "structure": {
+          "type": "array",
+          "description": "The hierarchical list of sections.",
+          "items": { "$ref": "#/definitions/reportSection" }
+        },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "last_modified": {"type": "string", "format": "date-time", "description": "Timestamp (ISO 8601 format) of last plan modification."},
+            "version": {"type": "string", "description": "Version identifier."}
+          },
+          "description": "Optional metadata about the plan."
+        }
+      },
+      "required": ["plan_id", "title", "structure"] # Requis si status est success
+    },
+    "error_details": {
+      "type": "object",
+      "description": "Details about the error if status is 'failed' or 'not_found'.",
+      "properties": {
+        "error_code": {
+          "type": "string",
+          "description": "Error code (e.g., 'PLAN_NOT_FOUND', 'DATABASE_ERROR', 'INTERNAL_SERVER_ERROR')."
+        },
+        "error_message": {
+          "type": "string",
+          "description": "Human-readable description of the error."
+        }
+      },
+      "required": ["error_code", "error_message"]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp (ISO 8601 format) when the plan was retrieved or the operation failed."
+    }
+  },
+  "required": [ "request_id", "status", "timestamp" ],
+  "if": { "properties": { "status": { "const": "success" } } },
+  "then": { "required": ["report_plan"] },
+  "allOf": [
+    { "if": { "properties": { "status": { "const": "success" } } }, "then": { "required": ["report_plan"] } },
+    { "if": { "properties": { "status": { "enum": ["failed", "not_found"] } } }, "then": { "required": ["error_details"] } }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ReportPlanUpdateRequest",
+  "description": "Schema for a request (typically user-initiated) to update the report plan structure. Sends the complete new desired structure.",
+  "definitions": {
+    "reportSectionInput": {
+      "type": "object",
+      "properties": {
+        "section_id": { "type": "string", "description": "Unique ID. Can be existing or new for additions." },
+        "title": { "type": "string", "description": "Section title." },
+        "level": { "type": "integer", "minimum": 1, "description": "Hierarchical level." },
+        "order": { "type": "integer", "minimum": 0, "description": "Order among siblings." },
+        "subsections": { "type": "array", "items": { "$ref": "#/definitions/reportSectionInput" } }
+      },
+      "required": [ "section_id", "title", "level", "order" ]
+    }
+  },
+  "type": "object",
+  "properties": {
+    "request_id": { "type": "string", "format": "uuid", "description": "Unique identifier (UUID v4 recommended) for this update request." },
+    "plan_id_to_update": { "type": "string", "description": "Identifier of the plan being updated (e.g., 'current').", "default": "current" },
+    "updated_report_plan_structure": {
+        "type": "object",
+        "description": "The complete, new desired structure for the report plan.",
+    "properties": {
+        "title": {
+            "type": "string",
+            "description": "New overall title (optional)."
+        },
+        "section_hierarchy": {
+            "type": "array", "description": "The full hierarchical list of sections as it should be after the update.", "items": { "$ref": "#/definitions/reportSectionInput" }
+        }
+        },
+        "required": ["section_hierarchy"]
+    },
+    "user_id": { "type": "string", "description": "Identifier of the user initiating the update (optional)." },
+    "update_reason": { "type": "string", "description": "Optional reason or description provided by the user for the update." }
+  },
+  "required": [
+    "request_id", "plan_id_to_update", "updated_report_plan_structure"
+  ]
+}

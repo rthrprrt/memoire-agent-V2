@@ -1,0 +1,27 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "ReportPlanChangeNotification",
+    "description": "Schema for a notification sent from the Orchestrator to relevant Workers indicating that the report plan has been changed.",
+    "type": "object",
+    "properties": {
+        "change_notification_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier (UUID v4 recommended) for this specific change notification."
+        },
+        "plan_id": {
+            "type": "string",
+            "description": "Identifier of the report plan that was changed."
+        },
+        "change_summary": {
+            "type": "string",
+            "description": "A brief description of the changes made (e.g., 'Section X added', 'Sections Y and Z reordered', 'Plan reset based on user request')."
+        },
+        "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp (ISO 8601 format) when the change occurred and the notification was generated."
+        }
+    },
+    "required": [ "change_notification_id", "plan_id", "change_summary", "timestamp" ]
+}

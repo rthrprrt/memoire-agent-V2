@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ActionConfirmationResponse",
+  "description": "Schema for the response containing the user's confirmation status or indicating a failure.",
+  "type": "object",
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "The UUID of the original ActionConfirmationRequest."
+    },
+     "status": {
+        "type": "string",
+        "description": "Outcome of the confirmation request.",
+        "enum": [
+          "confirmed",
+          "cancelled",
+          "failed"
+        ]
+      },
+    "user_comments": {
+      "type": "string",
+      "description": "Optional comments from the user, especially if cancelled."
+    },
+    "error_details": {
+      "type": "object",
+      "description": "Details about the error if status is 'failed'.",
+      "properties": {
+        "error_code": { "type": "string", "description": "Error code (e.g., 'TIMEOUT_ERROR', 'UI_ERROR')." },
+        "error_message": { "type": "string", "description": "Description of the failure." }
+      },
+      "required": ["error_code", "error_message"]
+    },
+     "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp (ISO 8601 format) when the response was finalized."
+    }
+  },
+  "required": [
+    "request_id",
+    "status",
+    "timestamp"
+  ]
+  ,
+  "if": {
+    "properties": { "status": { "const": "failed" } }
+  },
+  "then": { "required": ["error_details"] }
+}

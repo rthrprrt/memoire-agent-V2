@@ -1,45 +1,264 @@
 {
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DataAnalysisResponse",
+  "description": "Schema for the response sent from the Worker to the Orchestrator after attempting a data analysis task. Contains status, results (if successful), or error details.",
   "type": "object",
   "properties": {
-    "tags": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "A list of tags extracted from the journal entries."
+    "request_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "The UUID of the original DataAnalysisRequest."
     },
-    "entities": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "A list of entities identified in the journal entries."
+    "analysis_type": {
+      "type": "string",
+      "description": "The type of analysis that was requested (copied from the original request for context).",
+      "enum": [
+        "generate_tags",
+        "map_competencies",
+        "summarize",
+        "extract_key_information",
+        "identify_trends"
+      ]
     },
-    "relationships": {
-      "type": "array",
-      "items": {
-        "type": "array",
-        "items": {
-          "type": "string"
+      "status": {
+      "type": "string",
+      "description": "The final status of the analysis task execution.",
+      "enum": [
+        "queued",
+        "in_progress",
+        "completed",
+        "partially_completed",
+        "failed"
+      ]
+    },
+    "results": {
+      "type": [
+        "object",
+          "null"
+      ],
+      "description": "Contains the output of the analysis if the status is 'completed' or 'partially_completed'. Structure varies based on analysis_type.",
+      "oneOf": [
+        {
+          "if": {
+            "properties": {
+              "analysis_type": {
+                "const": "generate_tags"
+              }
+            }
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                  },
+                "description": "List of generated relevant tags."
+              }
+            },
+            "required": [
+              "tags"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "analysis_type": {
+                "const": "map_competencies"
+              }
+            }
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+                "mapped_competencies": {
+                "type": "array",
+                 "items": {
+                  "type": "string"
+                },
+                  "description": "List of identified competencies."
+              }
+            },
+            "required": [
+              "mapped_competencies"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "analysis_type": {
+                "const": "summarize"
+              }
+            }
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+                "summary": {
+                "type": "string",
+                "description": "The generated summary text."
+              }
+            },
+            "required": [
+              "summary"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "analysis_type": {
+                "const": "extract_key_information"
+              }
+            }
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+                "extracted_data": {
+                "type": "object",
+                  "description": "Object with entity_name as keys and extracted values (str, num, list, bool, null). Type validation vs request happens in orchestrator.",
+                  "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                      },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            "required": [
+              "extracted_data"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "analysis_type": {
+                "const": "identify_trends"
+              }
+            }
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+                "trends_summary": {
+                "type": "string",
+                  "description": "Textual summary of trends."
+                  },
+                "trend_data": {
+                "type": [
+                  "object",
+                    "array",
+                  "null"
+                ],
+                "description": "Optional structured data representing the trends (format TBD)."
+              }
+            },
+            "required": [
+              "trends_summary"
+            ]
+          }
+        },
+        {
+          "type": "object",
+          "description": "Default empty object."
+        }
+      ]
+    },
+    "error_details": {
+      "type": "object",
+      "description": "Provides details about the error if the status is 'failed'.",
+      "properties": {
+        "error_code": {
+            "type": "string",
+            "description": "Standardized error code (e.g., 'INVALID_INPUT', 'PROCESSING_FAILED', 'DEPENDENCY_FAILED')."
+        },
+        "error_message": {
+            "type": "string",
+            "description": "Human-readable description of the error, including context if possible."
         }
       },
-      "description": "A list of relationships between tags and entities."
+       "required": [
+        "error_code",
+        "error_message"
+      ]
     },
-    "summary": {
+    "worker_id": {
+        "type": "string",
+        "description": "Worker ID (optional)."
+    },
+    "processing_start_time": {
       "type": "string",
-      "description": "A concise summary of the key insights."
+      "format": "date-time",
+        "description": "Start timestamp (ISO 8601) (optional)."
     },
-    "confidence_scores": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "number"
-      },
-      "description": "Confidence scores for extracted information."
+    "processing_end_time": {
+      "type": "string",
+      "format": "date-time",
+        "description": "End timestamp (ISO 8601) (optional)."
     },
-    "structured_data": {
-      "type": "object",
-      "description": "A detailed structured representation of the extracted information."
+    "processing_duration_ms": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Duration in ms (optional)."
     }
   },
-  "description": "Response containing the results of journal data analysis."
+   "required": [
+    "request_id",
+    "analysis_type",
+    "status"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "partially_completed"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "results"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "error_details"
+        ]
+      }
+    }
+  ]
 }

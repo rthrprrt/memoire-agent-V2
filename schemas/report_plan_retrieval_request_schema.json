@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ReportPlanRetrievalRequest",
+  "description": "Schema for a request to retrieve the current report plan structure and status.",
+  "type": "object",
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier (UUID v4 recommended) for this retrieval request."
+    },
+    "target_plan_version": {
+      "type": "string",
+      "description": "Optional specific version of the plan to retrieve (e.g., 'latest', 'v2'). Defaults to 'latest'."
+    },
+    "include_content_status": {
+      "type": "boolean",
+      "description": "Flag to indicate whether to include the generation status ('pending', 'drafted', etc.) for each section.",
+      "default": true
+    }
+  },
+  "required": [
+    "request_id"
+  ]
+}
