@@ -1,6 +1,7 @@
 # main.py (Version adaptée pour embeddings locaux)
 
 import argparse
+import ast
 import logging
 import os
 import sys
@@ -569,28 +570,45 @@ You have access to the following tools:
                         # Vérifier si l'outil est connu
                         if tool_name in AVAILABLE_TOOLS:
                             # Parser les Arguments (fonction interne simple)
-                            def parse_kwargs(s):
+                            def parse_kwargs(tool_call_str):
                                 kwargs = {}
                                 try:
-                                    # Isoler les arguments entre parenthèses
-                                    args_content = s[s.find('(') + 1 : s.rfind(')')].strip()
-                                    if not args_content: return {} # Pas d'arguments
+                                    # Extract the argument string between parentheses
+                                    start = tool_call_str.find('(')
+                                    end = tool_call_str.rfind(')')
+                                    if start == -1 or end == -1:
+                                        return {}  # No parentheses, no arguments
+                                    args_str = tool_call_str[start + 1:end].strip()
+                                    if not args_str:
+                                        return {}  # Empty argument string
 
-                                    # Split basique (ne gère pas les virgules/égales dans les valeurs string)
-                                    parts = args_content.split(',')
+                                    # Parse key-value pairs
+                                    parts = args_str.split(',')
                                     for part in parts:
-                                        key_val = part.split('=', 1)
-                                        if len(key_val) == 2:
-                                            key = key_val[0].strip()
-                                            val_str = key_val[1].strip()
-                                            try: val = int(val_str)
-                                            except ValueError:
-                                                try: val = float(val_str)
-                                                except ValueError: val = val_str.strip('\'"') # Enlève guillemets
-                                            kwargs[key] = val
-                                except Exception as e_parse_inner:
-                                     log.error(f"Inner parsing error in parse_kwargs for '{s}': {e_parse_inner}")
-                                     raise ValueError(f"Could not parse arguments: {s}") from e_parse_inner
+                                        part = part.strip()
+                                        if not part: continue  # Skip empty parts
+                                        if '=' not in part:
+                                            raise ValueError(f"Invalid argument format: '{part}' (missing '=').")
+
+                                        key, value_str = part.split('=', 1)
+                                        key = key.strip()
+                                        value_str = value_str.strip()
+
+                                        # Attempt to parse the value using ast.literal_eval for various types
+                                        try:
+                                            value = ast.literal_eval(value_str)
+                                        except (ValueError, SyntaxError):
+                                            # If not a literal, treat it as a string (ensure quotes if needed)
+                                            if not (value_str.startswith("'") and value_str.endswith("'")) and \
+                                                not (value_str.startswith('"') and value_str.endswith('"')):
+                                                value = value_str.strip("'\"")  # Remove potential quotes
+                                            else:
+                                                value = value_str  # Keep as is if already quoted
+
+                                        kwargs[key] = value
+                                except (ValueError, SyntaxError) as e_parse:
+                                    log.error(f"Error parsing arguments for tool call '{tool_call_str}': {e_parse}", exc_info=True)
+                                    raise ValueError(f"Could not parse tool call arguments: {e_parse}") from e_parse
                                 return kwargs
 
                             try:
@@ -643,7 +661,7 @@ You have access to the following tools:
         # Fin de la boucle for turn
 
     # Gérer le cas où aucune commande n'est reconnue (ne devrait pas arriver avec required=True)
-    else:
+    else :
         log.error(f"Unknown command received: {args.command}")
         parser.print_help() # Afficher l'aide
         sys.exit(1)
