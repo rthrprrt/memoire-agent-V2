@@ -1,8 +1,1 @@
-.env
-venv/
 vector_db/
-__pycache__/
-*.pyc
-*.log
-output/
-journals/
