@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "properties": {
+    "journal_entries": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "A list of journal entries to be analyzed."
+    },
+    "instructions": {
+      "type": "string",
+      "description": "Optional instructions or parameters for the analysis."
+    }
+  },
+  "required": [
+    "journal_entries"
+  ],
+  "description": "Request to analyze journal data."
+}

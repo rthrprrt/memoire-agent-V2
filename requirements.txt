@@ -6,6 +6,7 @@ tiktoken # Often used by embedding models/LLMs for token counting
 matplotlib
 plotly # Optional, for potentially richer visualizations
 pydantic
+jsonschema
 # reportlab # Optional: for PDF generation from scratch
 # pandoc # Optional: alternative for DOCX -> PDF conversion (requires separate installation)
 # numpy # Often a dependency for embedding/vector libs

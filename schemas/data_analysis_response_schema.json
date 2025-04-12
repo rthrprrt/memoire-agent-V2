@@ -1,0 +1,45 @@
+{
+  "type": "object",
+  "properties": {
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "A list of tags extracted from the journal entries."
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "A list of entities identified in the journal entries."
+    },
+    "relationships": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "description": "A list of relationships between tags and entities."
+    },
+    "summary": {
+      "type": "string",
+      "description": "A concise summary of the key insights."
+    },
+    "confidence_scores": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number"
+      },
+      "description": "Confidence scores for extracted information."
+    },
+    "structured_data": {
+      "type": "object",
+      "description": "A detailed structured representation of the extracted information."
+    }
+  },
+  "description": "Response containing the results of journal data analysis."
+}

@@ -38,46 +38,25 @@ The next phase focuses on transforming the current pipeline into a more autonomo
 
 **Key Development Steps for Phase 2:**
 
-1.  **[ ] Re-integrate DeepSeek API:**
-    *   Update `config.py` and `.env` for `DEEPSEEK_API_KEY`.
-    *   Update `llm_interface.py` to include a class/method for calling `deepseek-reasoner` specifically. Keep or adapt the `GeminiLLM` class for the worker role.
-2.  **[ ] Refine Tool Calling Mechanism:**
-    *   Solidify the text-based format (`>>>TOOL_CALL...`) or investigate alternative reliable methods for DeepSeek-Reasoner to trigger tools.
-    *   Improve the argument parsing (`parse_kwargs` in `main.py` or a dedicated function).
-3.  **[ ] Implement Core Agent Loop (Hybrid Logic):**
-    *   Refactor the `run_agent` command in `main.py` (or move to `agent_runner.py`).
-    *   The loop should be driven by `deepseek-reasoner`.
-    *   Implement the logic where Python code intercepts DeepSeek's requests:
-        *   Calls local tools directly (guideline search).
-        *   Calls Gemini API via `GeminiLLM` when journal content is needed for a task requested by DeepSeek.
-        *   Processes Gemini's output before potentially sending a summary/status back to DeepSeek.
-4.  **[ ] Enhance `agent_tools.py`:**
-    *   Implement more tools: `get_report_plan_structure`, `get_pending_sections`, `update_section_status`.
-    *   Create the `gather_context_for(section_title)` tool that orchestrates local searches (journals, guidelines, year 1 summaries) before potentially calling Gemini for drafting.
-5.  **[ ] Develop Planning & Execution Capabilities:**
-    *   Enable the DeepSeek orchestrator to:
-        *   Load/understand the report plan (`report_plan.json`).
-        *   Iterate through sections (`get_pending_sections`).
-        *   Request context gathering and drafting for each section via tools.
-        *   Track progress (`update_section_status`).
-6.  **[ ] Implement Basic Reflection/Correction Loop:**
-    *   After a section is drafted (by Gemini), have DeepSeek evaluate it against guidelines (using `search_guidelines`) and its internal reasoning (CoT).
-    *   If issues are found, DeepSeek requests a revision (triggering another call to Gemini with refined instructions).
-7.  **[ ] Integrate Year 1 Data:**
-    *   Prepare summary documents for Year 1.
-    *   Create a new ChromaDB collection (`year1_summaries`).
-    *   Implement `process_year1_docs` command.
-    *   Implement `search_year1_summary` tool.
-8.  **[ ] Improve Memory Management:**
-    *   Address context window limits for DeepSeek and Gemini (summarization, windowing).
-    *   Enhance `MemoryManager` for better short-term state tracking if needed.
+The revised Phase 2 will focus on enhancing the agent's capabilities in knowledge representation, reasoning, and interaction, while prioritizing code stability and maintainability. The key areas of development are:
+
+1.  **Agent Architecture and Communication:** Formalize the communication between the Orchestrator and Worker agents using structured message schemas.
+2.  **Knowledge Representation and Reasoning:** Explore and implement enhanced knowledge representation techniques (e.g., semantic networks, ontologies) and integrate a reasoning engine for more intelligent processing of journal information.
+3.  **Iterative Report Generation and Feedback:** Develop mechanisms for more targeted and informative feedback loops between the agents during report drafting and revision.
+4.  **Modularity and Extensibility:** Design the system with a focus on modularity, potentially using a microservices architecture or a plugin system for future expansion.
+5.  **User-Centric Design and Explainability:** Prioritize transparency and user control by providing clear explanations of the agent's reasoning and offering customization options.
+
+**Prioritized Initial Steps:**
+
+*   Set up a CI/CD pipeline with automated testing and code quality checks.
+*   Implement formal message schemas and handling for agent communication.
+*   Conduct an initial exploration of semantic networks and ontologies for knowledge representation.
 
 ## Setup
 
-1.  **Clone:** `git clone <your-repo-url>`
-2.  **Environment:** Create Conda env: `conda create -n apprenticeship-agent-env python=3.10 -y`, then `conda activate apprenticeship-agent-env`.
-3.  **Dependencies:** `pip install -r requirements.txt` (Installs `pypdf2`, `google-generativeai`, `sentence-transformers`, `torch`, etc. Removes `ollama` if present).
-4.  **API Keys & Config:**
+1.  **Environment:** Create Conda env: `conda create -n apprenticeship-agent-env python=3.10 -y`, then `conda activate apprenticeship-agent-env`.
+2.  **Dependencies:** `pip install -r requirements.txt` (Installs `pypdf2`, `google-generativeai`, `sentence-transformers`, `torch`, etc. Removes `ollama` if present).
+3.  **API Keys & Config:**
     *   Create `.env` file.
     *   Add `GOOGLE_API_KEY="<your_google_ai_key>"`
     *   Add `DEEPSEEK_API_KEY="<your_deepseek_key>"` (Needed for Phase 2 Orchestrator).
@@ -86,6 +65,7 @@ The next phase focuses on transforming the current pipeline into a more autonomo
 6.  **Guidelines PDF:** Place the official guidelines PDF at the location specified by `GUIDELINES_PDF_PATH` in `config.py`.
 7.  **(Phase 2 Prep):** Download Ollama (if using for local testing/comparison) and pull models (`ollama pull mistral`). *Note: Ollama is no longer the primary LLM in the Phase 2 plan.*
 
+1.  **Clone:** `git clone <your-repo-url>`
 ## Usage (Current & Planned)
 
 **Current Core Commands:**
