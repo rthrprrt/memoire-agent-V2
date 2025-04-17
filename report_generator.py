@@ -1,5 +1,5 @@
 import config
-from llm_interface import DeepSeekLLM
+from llm_interface import GeminiLLM
 from vector_database import VectorDBManager
 from data_models import ReportPlan, ReportSection, JournalEntry
 from typing import List, Optional
@@ -13,7 +13,7 @@ class ReportGenerator:
     """Generates the report content section by section."""
 
     def __init__(self, vector_db: VectorDBManager):
-        self.llm = DeepSeekLLM()
+        self.llm = GeminiLLM()
         self.vector_db = vector_db
 
     def _get_context_for_section(self, section_title: str, k: int = 7) -> List[str]:

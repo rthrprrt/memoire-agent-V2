@@ -1,5 +1,5 @@
 import config
-from llm_interface import DeepSeekLLM
+from llm_interface import GeminiLLM
 from data_models import ReportPlan, ReportSection, JournalEntry
 from document_processor import extract_text_from_docx # To read the generated report
 from vector_database import VectorDBManager # To compare against original chunks
@@ -13,7 +13,7 @@ class QualityChecker:
     """Performs various quality checks on the generated report."""
 
     def __init__(self, vector_db: VectorDBManager):
-        self.llm = DeepSeekLLM()
+        self.llm = GeminiLLM()
         self.vector_db = vector_db
         # Store original journal text for plagiarism check
         # This might consume significant memory for large journals.

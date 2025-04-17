@@ -13,6 +13,6 @@ jsonschema
 sentence-transformers
 torch
 transformers
-pypdf2
+PyPDF2
 # Nécessaires pour Utiliser l'API Google AI (Gemini)
 google-generativeai

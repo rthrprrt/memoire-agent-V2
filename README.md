@@ -1,93 +1,102 @@
 # Apprenticeship Report Agent (memoire-agent-V2)
 
-This AI agent aims to automate the creation of an MSc Apprenticeship Report using daily journal entries (DOCX) and official guidelines (PDF). It leverages local embeddings for context retrieval and a hybrid AI approach for reasoning, task execution, and content generation, prioritizing data privacy for sensitive journal content.
+This AI agent aims to automate the creation of an MSc Apprenticeship Report ("Mission Professionnelle Digi5") using daily journal entries (DOCX) and official guidelines (PDF). It leverages local embeddings for context retrieval and Google's Gemini API for reasoning, task execution, and content generation, while prioritizing data privacy during vectorization.
 
-## Current Status & Features (End of Phase 1 - Foundations)
+## Current Status & Features (Checkpoint: Post-Initial Agent Loop Test)
 
-*   ✅ **DOCX Processing:** Parses daily journal entries (requires `YYYY-MM-DD.docx` format).
-*   ✅ **PDF Guideline Processing:** Extracts text from the official report guidelines PDF.
-*   ✅ **Local Embeddings:** Uses local Sentence Transformers (`paraphrase-multilingual-mpnet-base-v2` by default) via ChromaDB for vectorizing journal entries and guidelines. **Journal/Guideline text does NOT leave the local machine during embedding.**
-*   ✅ **Dual Vector Stores:** Maintains separate ChromaDB collections for `journal_entries` and `reference_docs`.
-*   ✅ **Metadata Extraction (via LLM):** Can generate tags and map competencies by sending *portions* of journal text to an LLM API (currently configured for local Ollama/Mistral for privacy).
-*   ✅ **Content Generation (via LLM):** Can generate report sections by retrieving relevant local context (embeddings) and sending it *along with prompts* to an LLM API (currently configured for local Ollama/Mistral).
-*   ✅ **Basic Agent Loop:** Experimental `run_agent` command allows an LLM to interact with defined tools (`search_journal_entries`, `search_guidelines`) via text-based calls.
-*   ✅ **Privacy-Focused LLM Calls:** Current LLM calls (tags, competencies, generation) are configured to use a **local Ollama model**, ensuring no journal content is sent to external APIs during these steps.
-*   ✅ **Supporting Modules:** Includes components for planning, quality checks (basic), visualization (basic), reference management, etc.
+*   ✅ **DOCX Processing:** Parses daily journal entries (expects `YYYY-MM-DD.docx` format, uses `python-docx`).
+*   ✅ **PDF Guideline Processing:** Extracts text from the official report guidelines PDF (uses `pypdf2`).
+*   ✅ **Local Embeddings:** Uses local Sentence Transformers (`paraphrase-multilingual-mpnet-base-v2` by default via `sentence-transformers` library) to generate text embeddings. **Journal/Guideline text does NOT leave the local machine during embedding.**
+*   ✅ **Vector Storage:** Stores text chunks and their local embeddings in ChromaDB (`chromadb` library), maintaining separate collections for `journal_entries` and `reference_docs`. Persisted locally in the `vector_db/` directory.
+*   ✅ **LLM Integration:** Uses **Google's Gemini API** (via `google-generativeai` library, configured with `GeminiLLM` class in `llm_interface.py`) for:
+    *   Generating tags (`tag_generator.py`).
+    *   Mapping competencies (`competency_mapper.py`).
+    *   Analyzing content (`content_analyzer.py`).
+    *   Generating report sections (`report_generator.py`).
+    *   Powering the agent loop (`main.py`).
+*   ✅ **Report Planning:** Generates an initial structured report plan (`report_plan.json`) with unique section IDs based on a predefined structure (`report_planner.py`, `data_models.py`).
+*   ✅ **Basic Agentic Workflow (`run_agent` command):**
+    *   An experimental loop where the Gemini LLM can interact with tools.
+    *   Uses a text-based format (`>>>TOOL_CALL...`) for tool invocation.
+    *   Successfully calls implemented tools (`search_guidelines`, `search_journal_entries`, `get_report_plan_structure`, `get_pending_sections`, `update_section_status`) via `agent_tools.py`.
+    *   Improved argument parsing using `ast.literal_eval`.
+    *   Basic handling of Gemini API conversation history requirements.
+*   ✅ **Supporting Modules:** Includes components for visualization (`matplotlib`), reference management (`references.json`), progress tracking (basic), and memory management (in-memory for now).
+*   ✅ **Data Privacy:** Embeddings are generated locally. LLM interactions send necessary context (journal snippets, guidelines, prompts) to Google AI API, which is the user's accepted configuration for this phase.
+*   ✅ **Environment Setup:** Configured for local execution using Conda/venv and Nix (via `.idx/dev.nix` for Firebase Studio compatibility, although local execution is now prioritized).
 
-## Phase 2 Roadmap: Towards an Autonomous Agentic Workflow (Hybrid Model)
+## Phase 2 Roadmap: Autonomous Agentic Workflow
 
-The next phase focuses on transforming the current pipeline into a more autonomous agent using a sophisticated hybrid AI architecture:
+The next phase focuses on enhancing the agent's autonomy and implementing a more robust workflow driven by the LLM.
 
-**Goal:** Create an agent capable of planning, executing, and reflecting on the report writing process, leveraging the strengths of different LLMs while ensuring sensitive journal data remains secure.
+**Goal:** Enable the agent to independently manage the report writing process from planning to drafting, using its tools effectively based on the overall objective and the report plan.
 
-**Proposed Hybrid Architecture:**
+**Key Development Steps:**
 
-1.  **Orchestrator / Reasoner / Guidelines Guardian:** `deepseek-reasoner` (via API)
-    *   **Role:** High-level planning, task decomposition, checking consistency against guidelines, evaluating logical flow. Utilizes its Chain-of-Thought (CoT) capabilities.
-    *   **Data Access:** Receives **only** non-sensitive data: prompts, objectives, metadata, guidelines content, *summarized/anonymized* results from the worker LLM. **Never sees raw journal content.**
-2.  **Worker / Redactor / Data Processor:** `gemini-pro` (via Google AI Free Tier API)
-    *   **Role:** Executes specific tasks requiring access to detailed context: generating tags/competencies from raw text, searching journals, drafting report sections based on retrieved chunks, summarizing journal content.
-    *   **Data Access:** Receives raw text chunks retrieved locally from ChromaDB, specific instructions from the Orchestrator (relayed by Python code). Sends potentially sensitive snippets to Google AI API.
-3.  **Embeddings:** Local Sentence Transformers (via ChromaDB). Unchanged.
-4.  **Python Intermediary (Agent Core Logic):** Acts as the bridge and filter.
-    *   Receives high-level instructions/tool calls from DeepSeek-Reasoner.
-    *   Determines if sensitive data is needed.
-    *   If yes: retrieves data locally, calls Gemini API for the specific task.
-    *   If no (or after Gemini call): potentially processes/summarizes/anonymizes Gemini's output before returning a result/status update to DeepSeek-Reasoner.
-    *   Executes local tools (like guideline search) directly when requested by DeepSeek-Reasoner.
+1.  **[ ] Implement Remaining Core Tools:**
+    *   Ensure robustness of `search_journal_entries`.
+    *   Implement tools for Year 1 data retrieval (requires data preparation first).
+    *   Refine `update_section_status` (consider state management beyond simple file save/load).
+2.  **[X] Robust Tool Argument Parsing:** Implemented using `ast.literal_eval`. *(Marked as done based on recent implementation)*.
+3.  **[ ] Develop Planning & Execution Capabilities:**
+    *   Refactor `run_agent` loop (or create `AgentRunner` class).
+    *   **Objective:** Give the agent the high-level goal "Generate the full report".
+    *   **Logic:**
+        *   Agent uses `get_report_plan_structure` and `get_pending_sections` to identify the next section to work on.
+        *   Agent uses `search_guidelines` and `search_journal_entries` (and potentially Year 1 search) to gather context for that section.
+        *   Agent calls a dedicated tool/function `draft_single_section(section_id, context)` which uses the LLM (`GeminiLLM.draft_report_section`) to generate the text.
+        *   Agent uses `update_section_status` to mark the section as `drafted` or `failed`.
+        *   Agent loops until `get_pending_sections` returns no sections.
+4.  **[ ] Improve Memory Management:**
+    *   Implement context window management for `conversation_history` (e.g., sliding window, summarization) to handle long processes.
+    *   Refactor `agent_tools` to avoid creating separate `MemoryManager` instances; pass the main instance or use a shared state mechanism.
+5.  **[ ] Implement Basic Reflection/Correction Loop:**
+    *   After drafting a section, add a step where the agent evaluates the draft against guidelines (`search_guidelines`) and potentially its own internal checklist (via LLM prompt).
+    *   If issues are found, the agent attempts to redraft the section with corrective instructions.
+6.  **[ ] Integrate Year 1 Data:**
+    *   User prepares summary documents for Year 1.
+    *   Implement `process_year1_docs` command (similar to guidelines/journals).
+    *   Implement `search_year1_summary` tool.
+    *   Adapt planning/drafting logic to incorporate Year 1 context where relevant.
 
-**Key Development Steps for Phase 2:**
+## Setup (Local Conda Environment - Recommended)
 
-The revised Phase 2 will focus on enhancing the agent's capabilities in knowledge representation, reasoning, and interaction, while prioritizing code stability and maintainability. The key areas of development are:
-
-1.  **Agent Architecture and Communication:** Formalize the communication between the Orchestrator and Worker agents using structured message schemas.
-2.  **Knowledge Representation and Reasoning:** Explore and implement enhanced knowledge representation techniques (e.g., semantic networks, ontologies) and integrate a reasoning engine for more intelligent processing of journal information.
-3.  **Iterative Report Generation and Feedback:** Develop mechanisms for more targeted and informative feedback loops between the agents during report drafting and revision.
-4.  **Modularity and Extensibility:** Design the system with a focus on modularity, potentially using a microservices architecture or a plugin system for future expansion.
-5.  **User-Centric Design and Explainability:** Prioritize transparency and user control by providing clear explanations of the agent's reasoning and offering customization options.
-
-**Prioritized Initial Steps:**
-
-*   Set up a CI/CD pipeline with automated testing and code quality checks.
-*   Implement formal message schemas and handling for agent communication.
-*   Conduct an initial exploration of semantic networks and ontologies for knowledge representation.
-
-## Setup
-
-1.  **Environment:** Create Conda env: `conda create -n apprenticeship-agent-env python=3.10 -y`, then `conda activate apprenticeship-agent-env`.
-2.  **Dependencies:** `pip install -r requirements.txt` (Installs `pypdf2`, `google-generativeai`, `sentence-transformers`, `torch`, etc. Removes `ollama` if present).
-3.  **API Keys & Config:**
-    *   Create `.env` file.
-    *   Add `GOOGLE_API_KEY="<your_google_ai_key>"`
-    *   Add `DEEPSEEK_API_KEY="<your_deepseek_key>"` (Needed for Phase 2 Orchestrator).
+1.  **Clone:** `git clone https://github.com/rthrprrt/memoire-agent-V2.git`
+2.  **Conda Environment:**
+    *   `conda create -n apprenticeship-agent-env python=3.10 -y` (or 3.11)
+    *   `conda activate apprenticeship-agent-env`
+3.  **Dependencies:** `pip install -r requirements.txt`
+4.  **API Keys & Config:**
+    *   Create `.env` file in the root directory.
+    *   Add `GOOGLE_API_KEY="<your_google_ai_key_from_ai_studio>"`
     *   Verify paths and model names in `config.py` (especially `GUIDELINES_PDF_PATH`, `LOCAL_EMBEDDING_MODEL_NAME`, `GEMINI_CHAT_MODEL_NAME`).
-5.  **Journals:** Place `.docx` files named `YYYY-MM-DD.docx` in the `journals/` directory.
-6.  **Guidelines PDF:** Place the official guidelines PDF at the location specified by `GUIDELINES_PDF_PATH` in `config.py`.
-7.  **(Phase 2 Prep):** Download Ollama (if using for local testing/comparison) and pull models (`ollama pull mistral`). *Note: Ollama is no longer the primary LLM in the Phase 2 plan.*
+5.  **Journals:** Place `.docx` files named `YYYY-MM-DD.docx` in the `journals/` directory (this directory is ignored by git).
+6.  **Guidelines PDF:** Place the official guidelines PDF (e.g., `Mémoire_Alternance_Job.pdf`) at the location specified by `GUIDELINES_PDF_PATH` in `config.py`.
+7.  **`.gitignore`:** Ensure `.gitignore` includes `/.venv/`, `/output/`, `/vector_db/`, `/journals/`, `.env`, etc.
 
-1.  **Clone:** `git clone <your-repo-url>`
-## Usage (Current & Planned)
+## Usage
 
-**Current Core Commands:**
+**Core Workflow Commands (Run in order initially):**
 
-*   `python rename_journals.py`: (Run once) Renames journal files from French date format to YYYY-MM-DD.
-*   `python main.py process_journals [--reprocess_all]`: Processes DOCX journals, generates embeddings locally, stores in DB.
-*   `python main.py process_guidelines [--reprocess]`: Processes the guidelines PDF, generates embeddings locally, stores in reference DB.
-*   `python main.py create_plan`: Generates `output/report_plan.json`.
-*   `python main.py generate_report`: Generates `output/apprenticeship_report.docx` using *current* LLM config (Ollama/local). **Will be updated in Phase 2 to use Gemini worker.**
-*   `python main.py run_agent [--objective ...] [--max_turns ...]`: Runs the *experimental* agent loop using *current* LLM config (Ollama/local). **Will be updated in Phase 2 for hybrid model.**
-*   `python main.py check_quality`: Runs basic checks on the generated report.
+1.  **(Optional, Run Once if needed):** `python rename_journals.py` - Renames journals from French date format.
+2.  `python main.py process_guidelines [--reprocess]` - Processes PDF guidelines into vector DB.
+3.  `python main.py process_journals [--reprocess_all]` - Processes DOCX journals into vector DB, calls Gemini for tags/competencies.
+4.  `python main.py create_plan` - Generates `output/report_plan.json` with section IDs.
+5.  `python main.py generate_report` - Generates full draft DOCX using Gemini (less agentic).
+6.  `python main.py run_agent [--objective "Your Goal"] [--max_turns N]` - Runs the experimental agent loop.
+
+**Other Commands:**
+
+*   `python main.py check_quality`: Runs basic quality checks.
 *   `python main.py create_visuals`: Generates timeline plots.
 *   `python main.py manage_refs [add|list] [options...]`: Manages references.
-
-**Phase 2 Target Command:**
-
-*   `python main.py run_agent --objective "Generate the full apprenticeship report according to guidelines"`: (Future Goal) Launches the autonomous workflow driven by DeepSeek-Reasoner and Gemini.
+*   `python main.py run_all [--reprocess] [--skip_guidelines]`: Attempts the full pipeline sequentially.
 
 ## Future Expansion (Beyond Phase 2)
 
-*   Knowledge Graph integration for relationship analysis.
-*   Web search tool for external references.
-*   More sophisticated memory techniques (vectorized conversation history).
+*   Knowledge Graph integration.
+*   Web search tool integration.
+*   Advanced memory techniques.
 *   GUI/Web interface (Streamlit/Flask).
-*   Robust error handling and retry logic for API calls/tools.
+*   More sophisticated error handling and recovery.
+*   Fine-tuning embedding/LLM models.

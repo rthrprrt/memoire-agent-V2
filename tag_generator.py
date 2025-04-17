@@ -1,5 +1,5 @@
 import config
-from llm_interface import DeepSeekLLM
+from llm_interface import GeminiLLM 
 from data_models import JournalEntry
 from typing import List
 import logging
@@ -10,7 +10,7 @@ class TagGenerator:
     """Generates tags for journal entries using the LLM."""
 
     def __init__(self):
-        self.llm = DeepSeekLLM()
+        self.llm = GeminiLLM()
 
     def generate_tags_for_entry(self, entry: JournalEntry, max_tags: int = 10) -> List[str]:
         """Generates and assigns tags to a single JournalEntry object."""

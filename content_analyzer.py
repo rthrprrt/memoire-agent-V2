@@ -1,7 +1,7 @@
 # content_analyzer.py
 
 import config
-from llm_interface import DeepSeekLLM
+from llm_interface import GeminiLLM
 from data_models import JournalEntry
 # Import necessary modules for type hints and functionality
 from typing import List, Dict, Optional
@@ -15,7 +15,7 @@ class ContentAnalyzer:
     """Analyzes journal content for themes, patterns, etc."""
 
     def __init__(self):
-        self.llm = DeepSeekLLM()
+        self.llm = GeminiLLM()
 
     def identify_recurring_themes(self, entries: List[JournalEntry], top_n: int = 5) -> Optional[Dict[str, int]]:
         """Identifies recurring themes across multiple journal entries using LLM."""

@@ -12,7 +12,7 @@ load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 # Nom du modèle Gemini à utiliser pour le chat, la génération, l'analyse, etc.
 # Ex: "gemini-1.0-pro", "gemini-1.5-flash" (vérifier la disponibilité/recommendations)
-GEMINI_CHAT_MODEL_NAME = "gemini-1.0-pro"
+GEMINI_CHAT_MODEL_NAME = "gemini-1.5-flash"
 
 # Clé API DeepSeek (Optionnel - Gardé pour référence ou usage futur potentiel)
 # DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")

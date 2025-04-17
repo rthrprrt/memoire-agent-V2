@@ -1,5 +1,5 @@
 import config
-from llm_interface import DeepSeekLLM
+from llm_interface import GeminiLLM
 from data_models import JournalEntry
 from typing import List, Dict, Tuple
 import logging
@@ -11,7 +11,7 @@ class CompetencyMapper:
     """Maps journal entry content to predefined competencies."""
 
     def __init__(self):
-        self.llm = DeepSeekLLM()
+        self.llm = GeminiLLM()
         self.competencies_list = config.COMPETENCIES_TO_TRACK
 
     def map_competencies_for_entry(self, entry: JournalEntry) -> List[str]:

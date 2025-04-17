@@ -21,11 +21,11 @@ class DocumentChunk(BaseModel):
     metadata: Dict = Field(default_factory=dict) # Store date, tags etc. here for filtering
 
 class ReportSection(BaseModel):
-    """Represents a section in the report plan."""
+    section_id: str # <-- S'assurer que cette ligne existe
     title: str
     level: int
-    content: Optional[str] = None # Generated content goes here
-    status: str = "pending" # e.g., pending, drafting, drafted, reviewed, final
+    content: Optional[str] = None
+    status: str = "pending"
     subsections: List['ReportSection'] = Field(default_factory=list)
 
 ReportSection.model_rebuild() # Needed for self-referencing List['ReportSection']
