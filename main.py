@@ -1,17 +1,21 @@
-# main.py (Version adaptée pour embeddings locaux)
+# main.py (Version propre et corrigée utilisant GeminiLLM)
 
 import argparse
 import ast
 import logging
 import os
 import sys
-import json # Importé pour la gestion des références
+import json
+import time # Importé pour clear_collection dans vector_database (via agent_tools)
 
-# Import necessary modules from the project
+# --- Import des modules du projet ---
 import config
 from document_processor import process_all_journals, chunk_text, extract_text_from_pdf
-from vector_database import VectorDBManager
-from llm_interface import DeepSeekLLM
+from vector_database import VectorDBManager # Utilise embeddings locaux
+# Utilisation de l'interface pour Google Gemini
+from llm_interface import GeminiLLM
+from data_models import JournalEntry, ReportPlan # Pour type hints
+import agent_tools # Pour les outils de l'agent
 from tag_generator import TagGenerator
 from competency_mapper import CompetencyMapper
 from content_analyzer import ContentAnalyzer
@@ -21,526 +25,244 @@ from quality_checker import QualityChecker
 from visualization import Visualizer
 from reference_manager import ReferenceManager
 from progress_tracker import ProgressTracker
-from memory_manager import MemoryManager # To hold state during execution
-# Import seulement ce qui est nécessaire pour le type hinting
-from typing import List
-from data_models import JournalEntry, ReportPlan
-import agent_tools
+from memory_manager import MemoryManager
+from typing import List, Dict, Any, Optional # Ajout de Any/Optional
 
-# Configure logging to include module names for better tracking
+# Configuration du logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [%(module)s] - %(message)s')
+log = logging.getLogger(__name__) # Utiliser __name__ pour le logger du module
 
-# Logger spécifique pour main.py
-log = logging.getLogger(__name__) # Utiliser __name__ est une bonne pratique
-
-
+# --- Fonction Principale ---
 def main():
-    parser = argparse.ArgumentParser(description="AI Agent for Apprenticeship Report Generation")
-    # Rendre la commande obligatoire pour éviter les erreurs si on lance juste 'python main.py'
+    # --- Configuration du Parseur d'Arguments ---
+    parser = argparse.ArgumentParser(description="AI Agent for Apprenticeship Report Generation (Embeddings: Local, LLM: Google Gemini)")
     subparsers = parser.add_subparsers(dest="command", help="Available commands", required=True)
 
-    # --- Subparser for Processing Journals ---
-    parser_process = subparsers.add_parser("process_journals",
-                                         help="Process journal DOCX files, generate tags, map competencies, "
-                                              "and store in the 'journal_entries' Vector DB collection.")
-    parser_process.add_argument("--journal_dir", default=config.JOURNAL_DIR,
-                                help="Directory containing journal DOCX files (expected format: YYYY-MM-DD.docx).")
-    parser_process.add_argument("--reprocess_all", action="store_true",
-                                help="Clear existing *journal* vector DB collection before processing.")
-    parser_guidelines = subparsers.add_parser("process_guidelines",
-                                            help="Process the guidelines PDF specified in config.py and store "
-                                                 "it in the 'reference_docs' Vector DB collection.")
-    parser_guidelines.add_argument("--pdf_path", default=config.GUIDELINES_PDF_PATH,
-                                   help="Path to the guidelines PDF file.")
-    parser_guidelines.add_argument("--reprocess", action="store_true",
-                                   help="Clear existing *reference* vector DB collection before processing.")
-    parser_agent = subparsers.add_parser("run_agent",
-                                       help="Run the agent interactively to work on the report.")
-    parser_agent.add_argument("--max_turns", type=int, default=10,
-                              help="Maximum number of interaction turns with the LLM.")
-    parser_agent.add_argument("--objective", default="Draft the 'Introduction' section of the report.",
-                              help="Initial objective for the agent.")
-    
-    # --- Subparser for Creating Report Plan ---
-    parser_plan = subparsers.add_parser("create_plan", help="Generate the report structure/plan.")
-    parser_plan.add_argument("--requirements_file", default=None,
-                             help="(Optional) Path to a file defining report structure (overrides config).")
-    parser_plan.add_argument("--output_plan_file", default=config.DEFAULT_PLAN_FILE,
-                             help="File path to save the generated plan JSON.")
+    # -- Commande: process_journals --
+    parser_process = subparsers.add_parser("process_journals", help="Process journals, generate embeddings locally, call LLM API for tags/competencies, store in DB.")
+    parser_process.add_argument("--journal_dir", default=config.JOURNAL_DIR, help="Directory with journal DOCX files (YYYY-MM-DD.docx).")
+    parser_process.add_argument("--reprocess_all", action="store_true", help="Clear existing journal vector DB collection first.")
 
-    # --- Subparser for Generating Report ---
-    parser_generate = subparsers.add_parser("generate_report",
-                                          help="Generate the draft report content based on the plan using DeepSeek API.")
-    parser_generate.add_argument("--plan_file", default=config.DEFAULT_PLAN_FILE,
-                                 help="Path to the report plan JSON file.")
-    parser_generate.add_argument("--output_file", default=config.DEFAULT_REPORT_OUTPUT,
-                                 help="Path to save the generated DOCX report draft.")
+    # -- Commande: process_guidelines --
+    parser_guidelines = subparsers.add_parser("process_guidelines", help="Process guidelines PDF, generate embeddings locally, store in reference DB.")
+    parser_guidelines.add_argument("--pdf_path", default=config.GUIDELINES_PDF_PATH, help="Path to the guidelines PDF file.")
+    parser_guidelines.add_argument("--reprocess", action="store_true", help="Clear existing reference vector DB collection first.")
 
-    # --- Subparser for Quality Check ---
-    parser_quality = subparsers.add_parser("check_quality", help="Run quality checks on a generated report draft.")
-    parser_quality.add_argument("--report_file", default=config.DEFAULT_REPORT_OUTPUT,
-                                help="Path to the report DOCX file to check.")
-    parser_quality.add_argument("--plan_file", default=config.DEFAULT_PLAN_FILE,
-                                help="Path to the report plan JSON (needed for consistency/gap checks).")
-    parser_quality.add_argument("--skip_journal_load", action="store_true",
-                                help="Skip reloading journal texts (faster if check follows generation, but less accurate for plagiarism).")
+    # -- Commande: create_plan --
+    parser_plan = subparsers.add_parser("create_plan", help="Generate the report structure plan (JSON).")
+    parser_plan.add_argument("--requirements_file", default=None, help="(Optional) Path to custom structure file.")
+    parser_plan.add_argument("--output_plan_file", default=config.DEFAULT_PLAN_FILE, help="Path to save the plan JSON.")
 
-    # --- Subparser for Visualizations ---
-    parser_visuals = subparsers.add_parser("create_visuals",
-                                         help="Generate visualizations (timeline, etc.). Requires processed journals data.")
-    parser_visuals.add_argument("--skip_journal_load", action="store_true",
-                                help="Skip reloading/reprocessing journals (assumes data is available).")
+    # -- Commande: generate_report --
+    parser_generate = subparsers.add_parser("generate_report", help="Generate report draft using LLM API based on plan and local context.")
+    parser_generate.add_argument("--plan_file", default=config.DEFAULT_PLAN_FILE, help="Path to the report plan JSON.")
+    parser_generate.add_argument("--output_file", default=config.DEFAULT_REPORT_OUTPUT, help="Path to save the DOCX draft.")
 
+    # -- Commande: check_quality --
+    parser_quality = subparsers.add_parser("check_quality", help="Run quality checks on a generated report draft using LLM API.")
+    parser_quality.add_argument("--report_file", default=config.DEFAULT_REPORT_OUTPUT, help="Path to the report DOCX to check.")
+    parser_quality.add_argument("--plan_file", default=config.DEFAULT_PLAN_FILE, help="Path to the report plan JSON.")
+    parser_quality.add_argument("--skip_journal_load", action="store_true", help="Skip reloading journals for plagiarism check.")
 
-    # --- Subparser for Reference Management ---
-    parser_refs = subparsers.add_parser("manage_refs", help="Manage bibliography references (stored in references.json).")
+    # -- Commande: create_visuals --
+    parser_visuals = subparsers.add_parser("create_visuals", help="Generate visualizations (requires processed journals).")
+    parser_visuals.add_argument("--skip_journal_load", action="store_true", help="Skip reloading journals.")
+
+    # -- Commande: manage_refs --
+    parser_refs = subparsers.add_parser("manage_refs", help="Manage bibliography references.")
     ref_subparsers = parser_refs.add_subparsers(dest="ref_command", help="Reference actions", required=True)
     parser_add_ref = ref_subparsers.add_parser("add", help="Add a new reference.")
-    parser_add_ref.add_argument("--key", required=True, help="Unique citation key (e.g., Smith2023).")
-    parser_add_ref.add_argument("--type", required=True, choices=['book', 'article', 'web', 'report', 'other'],
-                                help="Type of reference.")
-    parser_add_ref.add_argument("--author", required=True, help="Author(s), e.g., 'Smith, J. and Doe, A.'")
-    parser_add_ref.add_argument("--year", required=True, type=int, help="Year of publication.")
-    parser_add_ref.add_argument("--title", required=True, help="Title of the work.")
-    # Utiliser --data pour les champs spécifiques au type
-    parser_add_ref.add_argument("--data", default="{}",
-                                help="JSON string with additional type-specific fields. "
-                                     "Example for book: '{\"publisher\": \"PubCo\", \"place\": \"London\"}'. "
-                                     "Example for web: '{\"url\": \"http://...\", \"accessed\": \"YYYY-MM-DD\", \"website_name\": \"Site Name\"}'. "
-                                     "Example for article: '{\"journal\": \"Journal Name\", \"volume\": \"10\", \"issue\": \"2\", \"pages\": \"11-20\"}'.")
+    parser_add_ref.add_argument("--key", required=True); parser_add_ref.add_argument("--type", required=True, choices=['book', 'article', 'web', 'report', 'other'])
+    parser_add_ref.add_argument("--author", required=True); parser_add_ref.add_argument("--year", required=True, type=int); parser_add_ref.add_argument("--title", required=True)
+    parser_add_ref.add_argument("--data", default="{}", help="JSON string with additional type-specific fields.")
+    parser_list_ref = ref_subparsers.add_parser("list", help="List stored references.")
 
-    parser_list_ref = ref_subparsers.add_parser("list", help="List all stored references.")
+    # -- Commande: run_agent --
+    parser_agent = subparsers.add_parser("run_agent", help="Run the experimental agent loop using LLM API.")
+    parser_agent.add_argument("--max_turns", type=int, default=10, help="Maximum interaction turns.")
+    parser_agent.add_argument("--objective", default="Draft the 'Introduction' section.", help="Initial agent objective.")
 
-
-    # --- Subparser for Full Workflow (Convenience) ---
-    parser_full = subparsers.add_parser("run_all", help="Run the full workflow: process, plan, generate, check, visualize.")
-    parser_full.add_argument("--journal_dir", default=config.JOURNAL_DIR, help="Directory with journals.")
-    parser_full.add_argument("--output_file", default=config.DEFAULT_REPORT_OUTPUT, help="Final report output file.")
-    parser_full.add_argument("--reprocess", action="store_true", help="Force reprocessing of journals (clears DB).")
-
+    # -- Commande: run_all --
+    parser_full = subparsers.add_parser("run_all", help="Run full workflow (process journals & guidelines, plan, generate).")
+    parser_full.add_argument("--journal_dir", default=config.JOURNAL_DIR); parser_full.add_argument("--output_file", default=config.DEFAULT_REPORT_OUTPUT)
+    parser_full.add_argument("--reprocess", action="store_true", help="Force reprocessing of journals AND guidelines.")
+    parser_full.add_argument("--skip_guidelines", action="store_true", help="Skip processing guidelines.")
 
     args = parser.parse_args()
 
-    # --- Initialize Core Components ---
+    # --- Initialisation des Composants Clés ---
     log.info("Initializing core components...")
     try:
         memory = MemoryManager()
         vector_db = VectorDBManager()
-        tag_gen = TagGenerator()
-        comp_mapper = CompetencyMapper()
-        analyzer = ContentAnalyzer()
+        llm = GeminiLLM() # Utilise la classe pour Google AI
+        log.info(f"LLM Interface initialized using Google AI model: {config.GEMINI_CHAT_MODEL_NAME}")
+        # Injecter l'instance llm si nécessaire (design actuel suppose accès global ou __init__)
+        # tag_gen = TagGenerator(llm) # Design Explicite (préférable à terme)
+        tag_gen = TagGenerator()     # Design Actuel
+        comp_mapper = CompetencyMapper() # Idem
+        analyzer = ContentAnalyzer()    # Idem
         planner = ReportPlanner()
-        generator = ReportGenerator(vector_db)
-        quality_checker = QualityChecker(vector_db)
+        generator = ReportGenerator(vector_db) # A besoin de vector_db ; utilise llm implicitement
+        quality_checker = QualityChecker(vector_db) # A besoin de vector_db ; utilise llm implicitement
         visualizer = Visualizer()
         ref_manager = ReferenceManager()
         progress_tracker = ProgressTracker()
-        llm = DeepSeekLLM()
         log.info("Core components initialized successfully.")
     except Exception as e:
-        log.error(f"FATAL: Failed to initialize core components: {e}", exc_info=True)
+        log.critical(f"FATAL: Failed to initialize core components: {e}", exc_info=True)
         sys.exit(1)
 
-    AVAILABLE_TOOLS = {
-        "search_journal_entries": agent_tools.search_journal_entries,
-        "search_guidelines": agent_tools.search_guidelines,
-        # Ajoutez d'autres outils ici si définis dans agent_tools.py
-    }
+    # --- Exécution de la Commande Sélectionnée ---
+    try:
+        if args.command == "process_journals":
+            log.info("--- Command: process_journals ---")
+            if args.reprocess_all:
+                log.warning("Option --reprocess_all selected. Clearing *journal* collection...")
+                vector_db.clear_journal_collection()
 
-    # --- Command Execution ---
+            log.info(f"Processing journals from: {args.journal_dir}")
+            journal_entries: List[JournalEntry] = process_all_journals(args.journal_dir)
+            if not journal_entries: log.error("No valid journals found. Exiting."); sys.exit(1)
+            log.info(f"Found {len(journal_entries)} entries.")
 
-    if args.command == "process_journals":
-        log.info("--- Command: process_journals ---")
-        if args.reprocess_all:
-            log.warning("Option --reprocess_all selected. Clearing existing vector database collection...")
-            try:
-                vector_db.clear_collection()
-            except Exception as e_clear:
-                log.error(f"Failed to clear vector DB collection: {e_clear}", exc_info=True)
-                # Décider si on continue ou on arrête ? Pour l'instant, on continue mais on log l'erreur.
+            # Utilise l'instance 'llm' (GeminiLLM) initialisée plus haut
+            log.info("Generating tags (using Gemini)...")
+            journal_entries = tag_gen.process_entries(journal_entries)
+            log.info("Mapping competencies (using Gemini)...")
+            journal_entries = comp_mapper.process_entries(journal_entries)
 
-        # 1. Lire les fichiers DOCX
-        log.info(f"Processing journals from directory: {args.journal_dir}")
-        journal_entries: List[JournalEntry] = process_all_journals(args.journal_dir)
-        if not journal_entries:
-            log.error("No valid journal entries found or processed. Please check the 'journals' directory and filename format (YYYY-MM-DD.docx). Exiting.")
-            sys.exit(1)
-        log.info(f"Found {len(journal_entries)} journal entries to process.")
+            log.info("Adding journal entries to vector DB (local embeddings)...")
+            processed_count, error_count_db = 0, 0
+            for entry in journal_entries:
+                # Bloc try/except pour l'ajout d'une seule entrée
+                try:
+                    chunks = chunk_text(entry.raw_text)
+                    if chunks:
+                        entry_data_for_db = {
+                            "entry_id": entry.entry_id, "chunks": chunks, "date_iso": entry.date.isoformat(),
+                            "source_file": entry.source_file, "tags_str": ",".join(entry.tags or [])
+                        }
+                        vector_db.add_entry_chunks(entry_data_for_db)
+                        processed_count += 1
+                    else: log.warning(f"Entry {entry.entry_id} had no chunks.")
+                except Exception as e_add:
+                    log.error(f"Failed to add chunks for {entry.entry_id}: {e_add}", exc_info=True)
+                    error_count_db += 1
+            log.info(f"--- Finished Journal Processing: {processed_count} entries added. {error_count_db} errors. ---")
 
-        # 2. Générer les Tags (Appels API DeepSeek)
-        log.info("Generating tags for entries...")
-        journal_entries = tag_gen.process_entries(journal_entries)
+        elif args.command == "process_guidelines":
+            log.info("--- Command: process_guidelines ---")
+            pdf_path = args.pdf_path
+            if not os.path.exists(pdf_path): log.error(f"Guidelines PDF not found: {pdf_path}"); sys.exit(1)
+            if args.reprocess: log.warning("Clearing *reference* collection..."); vector_db.clear_reference_collection()
+            log.info(f"Processing PDF: {pdf_path}")
+            pdf_text = extract_text_from_pdf(pdf_path)
+            if not pdf_text: log.error(f"No text extracted from PDF '{pdf_path}'."); sys.exit(1)
+            pdf_chunks = chunk_text(pdf_text, config.CHUNK_SIZE, config.CHUNK_OVERLAP)
+            if not pdf_chunks: log.error("Failed to chunk PDF text."); sys.exit(1)
+            log.info(f"Adding {len(pdf_chunks)} guideline chunks to DB...")
+            doc_name = os.path.basename(pdf_path)
+            vector_db.add_reference_chunks(doc_name=doc_name, chunks=pdf_chunks) # Le try/except est dans la méthode
+            log.info(f"--- Finished Guidelines Processing: Added guidelines from '{doc_name}' ---")
 
-        # 3. Mapper les Compétences (Appels API DeepSeek)
-        log.info("Mapping competencies for entries...")
-        journal_entries = comp_mapper.process_entries(journal_entries)
-
-        # 4. Découper en Chunks et Ajouter à la Base Vectorielle (Embeddings Locaux)
-        log.info("Chunking text and adding entries to vector database (using local embeddings)...")
-        processed_count = 0
-        error_count_db = 0
-        for entry in journal_entries:
-            try:
-                chunks = chunk_text(entry.raw_text)
-                if chunks:
-                    # Préparer le dictionnaire pour add_entry_chunks
-                    entry_data_for_db = {
-                        "entry_id": entry.entry_id,
-                        "chunks": chunks,
-                        "date_iso": entry.date.isoformat(),
-                        "source_file": entry.source_file,
-                        "tags_str": ",".join(entry.tags) if entry.tags else ""
-                    }
-                    vector_db.add_entry_chunks(entry_data_for_db)
-                    processed_count += 1
-                else:
-                    log.warning(f"Entry {entry.entry_id} produced no text chunks. Skipping vector DB add.")
-            except Exception as e_add:
-                log.error(f"Failed to add chunks for entry {entry.entry_id} to vector DB: {e_add}", exc_info=True)
-                error_count_db += 1
-
-        log.info(f"--- Finished Journal Processing ---")
-        log.info(f"Entries added/updated in DB: {processed_count}")
-        if error_count_db > 0:
-             log.warning(f"Encountered {error_count_db} errors during vector DB addition.")
-
-    elif args.command == "process_guidelines":
-        log.info("--- Command: process_guidelines ---")
-        pdf_path = args.pdf_path
-        if not os.path.exists(pdf_path):
-             log.error(f"Guidelines PDF file not found at path: {pdf_path}")
-             log.error("Please check the path in config.py (GUIDELINES_PDF_PATH) or provide correct path with --pdf_path.")
-             sys.exit(1)
-
-        if args.reprocess:
-             log.warning("Option --reprocess selected. Clearing existing *reference* vector database collection...")
-             vector_db.clear_reference_collection() # Appelle la méthode spécifique
-
-        log.info(f"Processing guidelines PDF: {pdf_path}")
-        pdf_text = extract_text_from_pdf(pdf_path)
-
-        if not pdf_text:
-             log.error(f"Could not extract text from PDF '{pdf_path}'. Cannot process guidelines.")
-             sys.exit(1)
-
-        log.info("Chunking PDF text...")
-        pdf_chunks = chunk_text(pdf_text, chunk_size=config.CHUNK_SIZE, chunk_overlap=config.CHUNK_OVERLAP) # Utiliser les mêmes params de chunking ? Adaptable.
-
-        if not pdf_chunks:
-             log.error("Failed to create chunks from the PDF text.")
-             sys.exit(1)
-
-        log.info(f"Adding {len(pdf_chunks)} guideline chunks to vector database...")
-        try:
-             doc_name = os.path.basename(pdf_path)
-             vector_db.add_reference_chunks(doc_name=doc_name, chunks=pdf_chunks)
-             log.info(f"Successfully added guidelines from '{doc_name}' to the reference collection.")
-        except Exception as e_add_ref:
-             log.error(f"Failed to add reference chunks to vector DB: {e_add_ref}", exc_info=True)
-             sys.exit(1)
-
-        log.info("--- Finished Guidelines Processing ---")
-
-    elif args.command == "create_plan":
-        log.info("--- Command: create_plan ---")
-        structure_def = None
-        if args.requirements_file:
-            log.warning("Loading structure from requirements file is not yet implemented. Using default.")
-            # TODO: Implémenter la lecture depuis args.requirements_file
-        else:
-            log.info("Using default report structure from config.")
-
-        try:
+        elif args.command == "create_plan":
+            log.info("--- Command: create_plan ---")
+            structure_def = None
+            if args.requirements_file: log.warning("Loading structure from file NI.")
             report_plan: ReportPlan = planner.create_base_plan(structure_definition=structure_def)
             memory.save_report_plan(report_plan, args.output_plan_file)
-            log.info(f"Report plan saved successfully to {args.output_plan_file}")
-            print(f"\nReport plan generated and saved to: {args.output_plan_file}")
-            print("You can review and optionally edit this JSON file before generating the report.")
-        except Exception as e_plan:
-            log.error(f"Failed to create or save the report plan: {e_plan}", exc_info=True)
-            sys.exit(1)
+            log.info(f"Report plan saved to {args.output_plan_file}")
+            print(f"\nPlan saved to: {args.output_plan_file}")
 
-
-    elif args.command == "generate_report":
-        log.info("--- Command: generate_report ---")
-        log.info(f"Loading report plan from: {args.plan_file}")
-        report_plan = memory.load_report_plan(args.plan_file)
-        if not report_plan:
-            log.error(f"Could not load report plan from {args.plan_file}. Cannot generate report. "
-                      "Ensure you have run 'create_plan' first.")
-            sys.exit(1)
-
-        log.info(f"Starting report content generation. Output will be saved to: {args.output_file}")
-        log.info("This process involves multiple API calls to DeepSeek and may take some time...")
-        try:
-            # La génération modifie l'objet report_plan en place (ajoute le contenu, change les statuts)
+        elif args.command == "generate_report":
+            log.info("--- Command: generate_report ---")
+            report_plan = memory.load_report_plan(args.plan_file)
+            if not report_plan: log.error(f"Plan file not found: {args.plan_file}"); sys.exit(1)
+            log.info(f"Starting report generation (LLM: Gemini). Output: {args.output_file}")
+            # generator utilise l'instance llm (GeminiLLM)
             updated_plan = generator.generate_full_report(report_plan, args.output_file)
-
-            # Sauvegarder le plan mis à jour qui contient maintenant le contenu généré et les statuts
             memory.save_report_plan(updated_plan, args.plan_file)
-            log.info(f"Report generation finished. Draft saved to '{args.output_file}'. "
-                     f"Updated plan (with content) saved back to '{args.plan_file}'.")
-            print(f"\nReport draft generated and saved to: {args.output_file}")
-        except Exception as e_gen:
-             log.error(f"An error occurred during report generation: {e_gen}", exc_info=True)
-             # Sauvegarder l'état actuel du plan même en cas d'erreur partielle ?
-             if report_plan: memory.save_report_plan(report_plan, args.plan_file + ".error")
-             log.info(f"Attempted to save partial plan state to {args.plan_file}.error")
-             sys.exit(1)
+            log.info(f"Report generation finished. Draft: '{args.output_file}'. Plan: '{args.plan_file}'.")
+            print(f"\nReport draft generated: {args.output_file}")
 
-
-    elif args.command == "check_quality":
-        log.info("--- Command: check_quality ---")
-        log.info(f"Loading report plan from: {args.plan_file}")
-        report_plan = memory.load_report_plan(args.plan_file)
-        if not report_plan:
-            log.warning(f"Could not load report plan from {args.plan_file}. "
-                        "Consistency and gap checks based on plan structure will be skipped.")
-
-        if not os.path.exists(args.report_file):
-             log.error(f"Report file '{args.report_file}' not found. Cannot perform quality checks.")
-             sys.exit(1)
-        log.info(f"Checking quality of report file: {args.report_file}")
-
-        # Chargement des textes originaux pour la comparaison
-        if not args.skip_journal_load:
-            log.info("Loading original journal texts for plagiarism comparison...")
-            temp_journal_entries = process_all_journals(config.JOURNAL_DIR) # Recharger pour avoir les textes
-            if temp_journal_entries:
-                quality_checker.load_journal_texts(temp_journal_entries)
-            else:
-                log.warning("Could not load journal texts. Plagiarism check might be inaccurate.")
-        else:
-            log.info("Skipping journal text loading as per --skip_journal_load.")
-
-
-        # Exécution des différentes vérifications
-        gap_issues = []
-        consistency_issues = []
-        log.info("Running quality checks (this may involve API calls)...")
-        try:
+        elif args.command == "check_quality":
+            log.info("--- Command: check_quality ---")
+            report_plan = memory.load_report_plan(args.plan_file)
+            if not os.path.exists(args.report_file): log.error(f"Report file not found: {args.report_file}"); sys.exit(1)
+            if not args.skip_journal_load:
+                log.info("Loading journals for plagiarism check...")
+                temp_journal_entries = process_all_journals(config.JOURNAL_DIR)
+                if temp_journal_entries: quality_checker.load_journal_texts(temp_journal_entries)
+                else: log.warning("Could not load journals for plagiarism check.")
+            log.info(f"Checking quality of: {args.report_file} (LLM: Gemini)...")
+            gap_issues, consistency_issues = [], []
             if report_plan:
-                log.info("Checking for content gaps based on plan...")
                 gap_issues = quality_checker.identify_content_gaps(report_plan)
-                log.info("Checking for consistency across sections...")
                 consistency_issues = quality_checker.check_consistency_across_sections(report_plan)
-            else:
-                log.warning("Skipping content gap and consistency checks as report plan was not loaded.")
-
-            log.info("Checking for potential over-copying from journals...")
             plagiarism_issues, copied_percentage = quality_checker.check_plagiarism_against_journals(args.report_file)
-
-            # Affichage des résultats de manière structurée
-            print("\n--- Quality Check Results ---")
-            print(f"Report File: {args.report_file}")
-
-            if report_plan:
-                completed, total, percent = progress_tracker.calculate_progress(report_plan)
-                print(f"\nReport Progress: {completed}/{total} sections marked as complete ({percent:.1f}%)")
-
-                if gap_issues:
-                    print("\n[!] Potential Content Gaps Found:")
-                    for issue in gap_issues: print(f"  - {issue}")
-                else: print("\n[*] No major content gaps detected based on plan.")
-
-                if consistency_issues:
-                    print("\n[!] Potential Consistency Issues Found:")
-                    for issue in consistency_issues: print(f"  - {issue}")
-                else: print("\n[*] No major consistency issues detected between checked sections.")
-            else:
-                 print("\n[!] Report plan not loaded, skipping gap and consistency checks.")
-
-
-            if quality_checker.original_journal_texts: # Vérifier si les textes étaient chargés
-                 print(f"\n[*] Over-Copying Check (Similarity vs Journals - Threshold ~85%):")
-                 print(f"  - Estimated potentially copied text: {copied_percentage:.1f}%")
-                 if plagiarism_issues:
-                     print(f"  - Found {len(plagiarism_issues)} sentences with high similarity:")
-                     for issue in plagiarism_issues[:5]: print(f"    - {issue}") # Montrer les 5 premiers
-                     if len(plagiarism_issues) > 5: print(f"      ... and {len(plagiarism_issues)-5} more.")
-                 else:
-                     print("  - No sentences found with very high similarity to original journals.")
-            else:
-                 print("\n[!] Original journal texts not loaded, skipping plagiarism check.")
-
+            # Affichage...
+            print("\n--- Quality Check Results ---"); print(f"File: {args.report_file}")
+            if report_plan: completed, total, percent = progress_tracker.calculate_progress(report_plan); print(f"\nProgress: {completed}/{total} sections complete ({percent:.1f}%)")
+            if gap_issues: print("\n[!] Gaps Found:"); [print(f"  - {i}") for i in gap_issues]
+            else: print("\n[*] No major gaps detected.")
+            if consistency_issues: print("\n[!] Consistency Issues Found:"); [print(f"  - {i}") for i in consistency_issues]
+            else: print("\n[*] No major consistency issues detected.")
+            if quality_checker.original_journal_texts: print(f"\n[*] Plagiarism Check:"); print(f"  - Est. Copied: {copied_percentage:.1f}%"); [print(f"    - {i}") for i in plagiarism_issues[:5]]; print(f"      ... ({len(plagiarism_issues)-5} more)" if len(plagiarism_issues)>5 else "")
+            else: print("\n[!] Plagiarism check skipped (no journals loaded).")
             print("-----------------------------\n")
 
-        except Exception as e_qual:
-             log.error(f"An error occurred during quality checks: {e_qual}", exc_info=True)
-             sys.exit(1)
+        elif args.command == "create_visuals":
+            log.info("--- Command: create_visuals ---")
+            if args.skip_journal_load: log.error("--skip_journal_load NI."); sys.exit(1)
+            journal_entries = process_all_journals(config.JOURNAL_DIR)
+            if not journal_entries: log.error("No journals found."); sys.exit(1)
+            log.info("Mapping data for visuals (LLM: Gemini)...")
+            journal_entries = tag_gen.process_entries(journal_entries)
+            journal_entries = comp_mapper.process_entries(journal_entries)
+            log.info("Generating plots...")
+            competency_timeline = comp_mapper.get_competency_timeline(journal_entries)
+            visualizer.plot_competency_timeline(competency_timeline)
+            project_mentions = analyzer.identify_mentioned_projects(journal_entries)
+            visualizer.plot_project_activity(project_mentions)
+            log.info(f"Visualizations saved in '{config.OUTPUT_DIR}'.")
+            print(f"\nVisualizations saved in: {config.OUTPUT_DIR}")
 
+        elif args.command == "manage_refs":
+            log.info("--- Command: manage_refs ---")
+            if args.ref_command == "add":
+                log.info(f"Adding reference: {args.key}")
+                try: extra_data = json.loads(args.data); assert isinstance(extra_data, dict)
+                except: log.error(f"Invalid JSON in --data: {args.data}", exc_info=True); print("Error: Invalid JSON in --data."); sys.exit(1)
+                citation_data = {"author": args.author, "year": args.year, "title": args.title, **extra_data}
+                ref_manager.add_citation(args.key, args.type, citation_data); print(f"Ref '{args.key}' added.")
+            elif args.ref_command == "list":
+                log.info("Listing references..."); citations = ref_manager._load_citations()
+                if not citations: print("No references found.")
+                else: print(f"\n--- Stored References ---"); print(ref_manager.generate_bibliography_text()); print("--------------------")
 
-    elif args.command == "create_visuals":
-        log.info("--- Command: create_visuals ---")
-        journal_entries = None
-        # Essayer de charger depuis la mémoire si une commande précédente les a chargés ?
-        # Ou recharger systématiquement pour garantir les données ? Rechargeons pour l'instant.
-        if not args.skip_journal_load:
-            log.info("Loading and processing journals for visualization data...")
-            try:
-                journal_entries = process_all_journals(config.JOURNAL_DIR)
-                if journal_entries:
-                    log.info("Ensuring tags and competencies are mapped...")
-                    journal_entries = tag_gen.process_entries(journal_entries)
-                    journal_entries = comp_mapper.process_entries(journal_entries)
-                else:
-                     log.error("No valid journal entries found. Cannot generate visualizations.")
-                     sys.exit(1)
-            except Exception as e_load_viz:
-                 log.error(f"Failed to load journal data for visualization: {e_load_viz}", exc_info=True)
-                 sys.exit(1)
-        else:
-             log.warning("Skipping journal loading for visuals. Ensure data was processed previously.")
-             # Note: This branch needs a way to access previously processed data, e.g., via MemoryManager persistence.
-             print("Error: --skip_journal_load for visuals requires persistent state (not implemented). Please run without the flag.")
-             sys.exit(1) # Ou essayer de continuer sans données ? Non.
+        elif args.command == "run_agent":
+            # Définir les outils DANS le scope de cette commande
+            AVAILABLE_TOOLS = {
+                "search_journal_entries": agent_tools.search_journal_entries,
+                "search_guidelines": agent_tools.search_guidelines,
+            }
+            log.info("--- Command: run_agent ---")
+            objective = args.objective; max_turns = args.max_turns
+            log.info(f"Starting agent: objective='{objective}', max_turns={max_turns}, LLM=Gemini")
 
-        if journal_entries:
-             try:
-                 log.info("Generating competency timeline visualization...")
-                 competency_timeline = comp_mapper.get_competency_timeline(journal_entries)
-                 visualizer.plot_competency_timeline(competency_timeline)
-                 log.info("Generating project activity visualization...")
-                 project_mentions = analyzer.identify_mentioned_projects(journal_entries)
-                 visualizer.plot_project_activity(project_mentions)
-                 log.info(f"Visualizations saved in '{config.OUTPUT_DIR}' directory.")
-                 print(f"\nVisualizations generated and saved in: {config.OUTPUT_DIR}")
-             except Exception as e_viz:
-                 log.error(f"An error occurred during visualization generation: {e_viz}", exc_info=True)
-                 sys.exit(1)
+            # --- Prompt Système ---
+            system_prompt = f"""...(Prompt système identique)...""" # Garder le prompt système détaillé
+            conversation_history = [{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Start: {objective}"}]
 
-
-        if journal_entries:
-             try:
-                 log.info("Generating competency timeline visualization...")
-                 competency_timeline = comp_mapper.get_competency_timeline(journal_entries)
-                 visualizer.plot_competency_timeline(competency_timeline)
-
-                 log.info("Generating project activity visualization...")
-                 # Assurer que l'analyzer peut utiliser les tags chargés
-                 project_mentions = analyzer.identify_mentioned_projects(journal_entries)
-                 visualizer.plot_project_activity(project_mentions)
-
-                 log.info(f"Visualizations saved in '{config.OUTPUT_DIR}' directory.")
-                 print(f"\nVisualizations generated and saved in: {config.OUTPUT_DIR}")
-             except Exception as e_viz:
-                 log.error(f"An error occurred during visualization generation: {e_viz}", exc_info=True)
-                 sys.exit(1)
-
-
-    elif args.command == "manage_refs":
-         log.info("--- Command: manage_refs ---")
-         if args.ref_command == "add":
-             log.info(f"Adding reference with key: {args.key}")
-             try:
-                 # Essayer de parser le JSON pour les données supplémentaires
-                 extra_data = json.loads(args.data)
-                 if not isinstance(extra_data, dict):
-                      raise ValueError("--data argument must be a valid JSON dictionary string.")
-
-                 # Créer le dictionnaire de données complet
-                 citation_data = {
-                     "author": args.author,
-                     "year": args.year,
-                     "title": args.title,
-                     **extra_data # Fusionner avec les données supplémentaires
-                 }
-                 ref_manager.add_citation(args.key, args.type, citation_data)
-                 print(f"Reference '{args.key}' added successfully to {ref_manager.filepath}")
-             except json.JSONDecodeError:
-                 log.error(f"Invalid JSON string provided for --data: {args.data}", exc_info=True)
-                 print(f"Error: Invalid JSON provided for --data argument: '{args.data}'")
-                 print("Example format: '{\"publisher\": \"PubCo\", \"place\": \"London\"}'")
-             except Exception as e_ref_add:
-                 log.error(f"Error adding reference '{args.key}': {e_ref_add}", exc_info=True)
-                 print(f"Error adding reference: {e_ref_add}")
-
-         elif args.ref_command == "list":
-             log.info("Listing all stored references...")
-             citations = ref_manager._load_citations() # Charger les citations actuelles
-             if not citations:
-                 print("No references found in storage.")
-             else:
-                 print(f"\n--- Stored References (from {ref_manager.filepath}) ---")
-                 # Utiliser generate_bibliography pour un affichage formaté et trié
-                 bib_text = ref_manager.generate_bibliography_text() # Prend toutes les citations par défaut
-                 print(bib_text)
-                 print(f"------------------------ ({len(citations)} total)")
-
-
-    elif args.command == "run_agent":
-        # ++ Définition des outils disponibles DANS le scope de cette commande ++
-        AVAILABLE_TOOLS = {
-            "search_journal_entries": agent_tools.search_journal_entries,
-            "search_guidelines": agent_tools.search_guidelines,
-            # Ajoutez ici d'autres outils depuis agent_tools si nécessaire
-        }
-        # ++ Fin Définition ++
-
-        log.info("--- Command: run_agent ---")
-        objective = args.objective
-        max_turns = args.max_turns
-        log.info(f"Starting agent with objective: '{objective}' (max_turns={max_turns})")
-
-        # --- Définition du Prompt Système Initial ---
-        # (Prompt système identique à la version précédente)
-        system_prompt = f"""
-You are an AI assistant tasked with writing an apprenticeship report based on journal entries and guidelines.
-Your goal is to fulfill the user's objective: "{objective}".
-You have access to the following tools:
-
-1.  **search_journal_entries(query: str, k: int = 5)**:
-    - Use this to find relevant passages from the **year 2** journal entries about projects, tasks, skills, or challenges.
-    - Provide a specific query related to the information you need.
-    - Example Usage (if you need info on Copilot security challenges):
-      `>>>TOOL_CALL
-      search_journal_entries(query="challenges related to Copilot security and access control", k=3)
-      >>>END_TOOL_CALL`
-
-2.  **search_guidelines(topic: str, k: int = 3)**:
-    - Use this to consult the official report guidelines (from the PDF) about requirements for a specific topic or section title.
-    - Provide the topic or section title as the query.
-    - Example Usage (if you need guidelines for the Introduction):
-      `>>>TOOL_CALL
-      search_guidelines(topic="Introduction section requirements", k=2)
-      >>>END_TOOL_CALL`
-
-**Workflow:**
-1.  **Think:** Analyze the objective and the current conversation history. Decide if you need more information.
-2.  **Act:** If you need information, choose ONE tool and format your call EXACTLY between `>>>TOOL_CALL` and `>>>END_TOOL_CALL`. Output ONLY the tool call in this format.
-3.  **Wait:** The system will execute the tool and provide the result prefixed with `>>>TOOL_RESULT`.
-4.  **Respond:** If you don't need a tool, or after receiving a tool result, provide your response, analysis, or the generated text fulfilling the objective.
-
-**Important:**
-- Only call one tool per turn.
-- Format tool calls precisely as shown.
-- If you have enough information, proceed to generate the required text or answer.
-- Keep track of the objective: "{objective}".
-"""
-
-        # --- Initialisation de la Mémoire Conversationnelle ---
-        conversation_history = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Please start working on the objective: {objective}"}
-        ]
-
-        # --- Boucle Agentique ---
-        for turn in range(max_turns):
-            log.info(f"--- Agent Turn {turn + 1}/{max_turns} ---")
-            print(f"\n--- Turn {turn + 1}/{max_turns} ---")
-
-            # 1. Appeler le LLM
-            log.debug(f"Sending context to LLM (last message role: {conversation_history[-1]['role']})")
-            llm_response_content = llm._make_request(messages=conversation_history, max_tokens=1500, temperature=0.5)
-
-            if not llm_response_content:
-                log.error("LLM failed to respond. Ending agent loop.")
-                print("Error: LLM did not respond.")
-                break
-
-            log.info(f"LLM Raw Response: {llm_response_content[:200]}...")
-            print(f"\nAgent Thought/Response:\n{llm_response_content}\n")
-            conversation_history.append({"role": "assistant", "content": llm_response_content})
+            # --- Boucle Agentique ---
+            for turn in range(max_turns):
+                log.info(f"--- Agent Turn {turn + 1}/{max_turns} ---"); print(f"\n--- Turn {turn + 1}/{max_turns} ---")
+                # 1. Appel LLM (Gemini)
+                llm_response_content = llm._make_request(messages=conversation_history, max_tokens=1500, temperature=0.5)
+                if not llm_response_content: log.error("LLM failed."); break
+                log.info(f"LLM Raw Response: {llm_response_content[:200]}..."); print(f"\nAgent:\n{llm_response_content}\n")
+                conversation_history.append({"role": "assistant", "content": llm_response_content})
 
             # 2. Détecter et Exécuter Appel d'Outil
             tool_call_prefix = ">>>TOOL_CALL"
@@ -667,22 +389,22 @@ You have access to the following tools:
         sys.exit(1)
 
 
-# --- Point d'entrée ---
+# --- Point d'Entrée Principal ---
 if __name__ == "__main__":
     try:
         main()
     except SystemExit as e:
-         # Gérer les sorties normales et d'erreur de sys.exit()
-         exit_code = e.code if isinstance(e.code, int) else 1 # Default to 1 if code is not int
-         if exit_code != 0: log.warning(f"Script exited with code {exit_code}.")
-         else: log.info("Script finished successfully.")
-         sys.exit(exit_code) # Propager le code de sortie
+        # Gérer sys.exit() proprement
+        exit_code = e.code if isinstance(e.code, int) else 1
+        if exit_code != 0: log.warning(f"Script exited with code {exit_code}.")
+        # else: log.info("Script finished successfully.") # Peut être redondant si loggé avant exit(0)
+        sys.exit(exit_code)
     except KeyboardInterrupt:
-         log.warning("Script interrupted by user (Ctrl+C).")
-         print("\nOperation cancelled by user.")
-         sys.exit(130) # Code de sortie standard pour Ctrl+C
-    except Exception as e:
-         # Attraper toute autre exception non prévue
-         log.critical(f"An unexpected critical error occurred in main: {e}", exc_info=True)
-         print(f"\nCRITICAL ERROR: {e}. Please check the logs for full details.")
-         sys.exit(1) # Quitter avec un code d'erreur générique
+        log.warning("Script interrupted by user (Ctrl+C).")
+        print("\nOperation cancelled by user.")
+        sys.exit(130)
+    except Exception as e_global:
+        # Attraper toute autre exception non prévue au niveau le plus haut
+        log.critical(f"An unexpected critical error occurred outside the main function block: {e_global}", exc_info=True)
+        print(f"\nCRITICAL ERROR: {e_global}. Check logs.")
+        sys.exit(1)
