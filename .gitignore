@@ -1,1 +1,30 @@
-vector_db/
+# Secrets
+.env
+
+# Environnement Virtuel Python
+/.venv/
+venv/
+
+# Sorties et Bases de Données Locales
+/output/
+/vector_db/
+*.log
+references.json
+
+# Fichiers Python Cache/Compilés
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Journaux (NE PAS SUIVRE)
+/journals/
+
+# Fichiers Temporaires OS/IDE
+~$*.docx
+.DS_Store
+Thumbs.db
+*.bak
+*.swp
+/.vscode/
+/.idea/
