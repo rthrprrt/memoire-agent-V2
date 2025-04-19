@@ -1,102 +1,53 @@
 # Apprenticeship Report Agent (memoire-agent-V2)
 
-This AI agent aims to automate the creation of an MSc Apprenticeship Report ("Mission Professionnelle Digi5") using daily journal entries (DOCX) and official guidelines (PDF). It leverages local embeddings for context retrieval and Google's Gemini API for reasoning, task execution, and content generation, while prioritizing data privacy during vectorization.
+This AI agent aims to automate the creation of an MSc Apprenticeship Report ("Mission Professionnelle Digi5") using daily journal entries (DOCX) and official guidelines (PDF). It leverages local embeddings for context retrieval and Google's Gemini API (via LangChain) for reasoning, task execution, and content generation.
 
-## Current Status & Features (Checkpoint: Post-Initial Agent Loop Test)
+## Current Status & Features (Checkpoint: LangChain Agent Integrated - Debugging Workflow)
 
-*   ✅ **DOCX Processing:** Parses daily journal entries (expects `YYYY-MM-DD.docx` format, uses `python-docx`).
-*   ✅ **PDF Guideline Processing:** Extracts text from the official report guidelines PDF (uses `pypdf2`).
-*   ✅ **Local Embeddings:** Uses local Sentence Transformers (`paraphrase-multilingual-mpnet-base-v2` by default via `sentence-transformers` library) to generate text embeddings. **Journal/Guideline text does NOT leave the local machine during embedding.**
-*   ✅ **Vector Storage:** Stores text chunks and their local embeddings in ChromaDB (`chromadb` library), maintaining separate collections for `journal_entries` and `reference_docs`. Persisted locally in the `vector_db/` directory.
-*   ✅ **LLM Integration:** Uses **Google's Gemini API** (via `google-generativeai` library, configured with `GeminiLLM` class in `llm_interface.py`) for:
-    *   Generating tags (`tag_generator.py`).
-    *   Mapping competencies (`competency_mapper.py`).
-    *   Analyzing content (`content_analyzer.py`).
-    *   Generating report sections (`report_generator.py`).
-    *   Powering the agent loop (`main.py`).
-*   ✅ **Report Planning:** Generates an initial structured report plan (`report_plan.json`) with unique section IDs based on a predefined structure (`report_planner.py`, `data_models.py`).
-*   ✅ **Basic Agentic Workflow (`run_agent` command):**
-    *   An experimental loop where the Gemini LLM can interact with tools.
-    *   Uses a text-based format (`>>>TOOL_CALL...`) for tool invocation.
-    *   Successfully calls implemented tools (`search_guidelines`, `search_journal_entries`, `get_report_plan_structure`, `get_pending_sections`, `update_section_status`) via `agent_tools.py`.
-    *   Improved argument parsing using `ast.literal_eval`.
-    *   Basic handling of Gemini API conversation history requirements.
-*   ✅ **Supporting Modules:** Includes components for visualization (`matplotlib`), reference management (`references.json`), progress tracking (basic), and memory management (in-memory for now).
-*   ✅ **Data Privacy:** Embeddings are generated locally. LLM interactions send necessary context (journal snippets, guidelines, prompts) to Google AI API, which is the user's accepted configuration for this phase.
-*   ✅ **Environment Setup:** Configured for local execution using Conda/venv and Nix (via `.idx/dev.nix` for Firebase Studio compatibility, although local execution is now prioritized).
+*   ✅ **DOCX/PDF Processing:** Parses journals (YYYY-MM-DD.docx format) and guidelines PDF.
+*   ✅ **Local Embeddings:** Uses local Sentence Transformers (`paraphrase-multilingual-mpnet-base-v2`) via ChromaDB. Data remains local during vectorization.
+*   ✅ **Vector Storage:** Separate ChromaDB collections (`journal_entries`, `reference_docs`) persisted locally (`vector_db/`).
+*   ✅ **LLM:** Uses **Google Gemini API** (e.g., `gemini-1.5-flash`, via `langchain-google-genai`) for all LLM tasks (tags, skills, analysis, drafting, agent reasoning). Configured in `llm_interface.py`.
+*   ✅ **Report Planning:** Generates `output/report_plan.json` with unique section IDs and status tracking (`report_planner.py`, `memory_manager.py`).
+*   ✅ **LangChain Agent (`run_agent` command):**
+    *   Uses `AgentExecutor` with a ReAct agent (`create_react_agent`).
+    *   Includes `ConversationSummaryBufferMemory`.
+    *   Tools defined as classes in `agent_tools.py` (search journals/guidelines, get/update plan, draft section). Tools use dependency injection.
+    *   Agent can start, query plan status (`get_report_plan_structure`, `get_pending_sections`), and correctly identify when no sections are pending.
+*   ⚠️ **Current Issue:** The agent fails when attempting to execute the `draft_single_section` tool. The tool internally reports "Error: Section ID '...' not found," even after the ID was correctly identified by `get_pending_sections`. This needs debugging within the `DraftSingleSectionTool._run` method in `agent_tools.py`.
 
 ## Phase 2 Roadmap: Autonomous Agentic Workflow
 
-The next phase focuses on enhancing the agent's autonomy and implementing a more robust workflow driven by the LLM.
+**Goal:** Achieve autonomous section-by-section report generation.
 
-**Goal:** Enable the agent to independently manage the report writing process from planning to drafting, using its tools effectively based on the overall objective and the report plan.
+**Immediate Next Steps:**
 
-**Key Development Steps:**
+1.  **[ ] Debug `DraftSingleSectionTool`:** Fix the "Section ID not found" error within the tool's `_run` method (likely in the internal `find_section` logic or plan loading).
+2.  **[ ] Test Full Workflow:** After fixing the tool, run `run_agent --max_iterations <high_number>` with a reset plan (`create_plan`) to verify section-by-section drafting completion. Monitor Gemini API quota usage.
+3.  **[ ] Implement Robust Memory:** If long runs hit context limits or the agent loses track, implement/configure memory summarization (e.g., refine `ConversationSummaryBufferMemory` settings or implement manual summarization).
+4.  **[ ] Refine Agent Logic/Prompts:** Improve the ReAct prompt and potentially agent logic for better error handling, stopping conditions, and task sequencing.
+5.  **[ ] Implement Reflection/Correction:** Add a step/tool for the agent to review drafted sections against guidelines before marking as "drafted".
 
-1.  **[ ] Implement Remaining Core Tools:**
-    *   Ensure robustness of `search_journal_entries`.
-    *   Implement tools for Year 1 data retrieval (requires data preparation first).
-    *   Refine `update_section_status` (consider state management beyond simple file save/load).
-2.  **[X] Robust Tool Argument Parsing:** Implemented using `ast.literal_eval`. *(Marked as done based on recent implementation)*.
-3.  **[ ] Develop Planning & Execution Capabilities:**
-    *   Refactor `run_agent` loop (or create `AgentRunner` class).
-    *   **Objective:** Give the agent the high-level goal "Generate the full report".
-    *   **Logic:**
-        *   Agent uses `get_report_plan_structure` and `get_pending_sections` to identify the next section to work on.
-        *   Agent uses `search_guidelines` and `search_journal_entries` (and potentially Year 1 search) to gather context for that section.
-        *   Agent calls a dedicated tool/function `draft_single_section(section_id, context)` which uses the LLM (`GeminiLLM.draft_report_section`) to generate the text.
-        *   Agent uses `update_section_status` to mark the section as `drafted` or `failed`.
-        *   Agent loops until `get_pending_sections` returns no sections.
-4.  **[ ] Improve Memory Management:**
-    *   Implement context window management for `conversation_history` (e.g., sliding window, summarization) to handle long processes.
-    *   Refactor `agent_tools` to avoid creating separate `MemoryManager` instances; pass the main instance or use a shared state mechanism.
-5.  **[ ] Implement Basic Reflection/Correction Loop:**
-    *   After drafting a section, add a step where the agent evaluates the draft against guidelines (`search_guidelines`) and potentially its own internal checklist (via LLM prompt).
-    *   If issues are found, the agent attempts to redraft the section with corrective instructions.
-6.  **[ ] Integrate Year 1 Data:**
-    *   User prepares summary documents for Year 1.
-    *   Implement `process_year1_docs` command (similar to guidelines/journals).
-    *   Implement `search_year1_summary` tool.
-    *   Adapt planning/drafting logic to incorporate Year 1 context where relevant.
+**Later Steps:**
 
-## Setup (Local Conda Environment - Recommended)
+*   Integrate Year 1 data (summaries, specific tool/collection).
+*   Implement user interaction tools (feedback, plan modification).
+*   Address LangChain deprecation warnings (Pydantic v1/v2).
+
+## Setup (Local Conda Environment)
 
 1.  **Clone:** `git clone https://github.com/rthrprrt/memoire-agent-V2.git`
-2.  **Conda Environment:**
-    *   `conda create -n apprenticeship-agent-env python=3.10 -y` (or 3.11)
-    *   `conda activate apprenticeship-agent-env`
-3.  **Dependencies:** `pip install -r requirements.txt`
-4.  **API Keys & Config:**
-    *   Create `.env` file in the root directory.
-    *   Add `GOOGLE_API_KEY="<your_google_ai_key_from_ai_studio>"`
-    *   Verify paths and model names in `config.py` (especially `GUIDELINES_PDF_PATH`, `LOCAL_EMBEDDING_MODEL_NAME`, `GEMINI_CHAT_MODEL_NAME`).
-5.  **Journals:** Place `.docx` files named `YYYY-MM-DD.docx` in the `journals/` directory (this directory is ignored by git).
-6.  **Guidelines PDF:** Place the official guidelines PDF (e.g., `Mémoire_Alternance_Job.pdf`) at the location specified by `GUIDELINES_PDF_PATH` in `config.py`.
-7.  **`.gitignore`:** Ensure `.gitignore` includes `/.venv/`, `/output/`, `/vector_db/`, `/journals/`, `.env`, etc.
+2.  **Conda Environment:** `conda create -n <name> python=3.10 -y`, `conda activate <name>`
+3.  **Dependencies:** `pip install -r requirements.txt` (includes `langchain`, `google-generativeai`, `sentence-transformers`, etc.)
+4.  **API Key:** Create `.env` file, add `GOOGLE_API_KEY="<your_google_ai_key>"`
+5.  **Config:** Verify paths/models in `config.py`.
+6.  **Data:** Place renamed journals (`YYYY-MM-DD.docx`) in `journals/`. Place guidelines PDF at path in `config.py`.
+7.  **`.gitignore`:** Ensure `/.venv/`, `/output/`, `/vector_db/`, `/journals/`, `.env` are listed.
 
 ## Usage
 
-**Core Workflow Commands (Run in order initially):**
-
-1.  **(Optional, Run Once if needed):** `python rename_journals.py` - Renames journals from French date format.
-2.  `python main.py process_guidelines [--reprocess]` - Processes PDF guidelines into vector DB.
-3.  `python main.py process_journals [--reprocess_all]` - Processes DOCX journals into vector DB, calls Gemini for tags/competencies.
-4.  `python main.py create_plan` - Generates `output/report_plan.json` with section IDs.
-5.  `python main.py generate_report` - Generates full draft DOCX using Gemini (less agentic).
-6.  `python main.py run_agent [--objective "Your Goal"] [--max_turns N]` - Runs the experimental agent loop.
-
-**Other Commands:**
-
-*   `python main.py check_quality`: Runs basic quality checks.
-*   `python main.py create_visuals`: Generates timeline plots.
-*   `python main.py manage_refs [add|list] [options...]`: Manages references.
-*   `python main.py run_all [--reprocess] [--skip_guidelines]`: Attempts the full pipeline sequentially.
-
-## Future Expansion (Beyond Phase 2)
-
-*   Knowledge Graph integration.
-*   Web search tool integration.
-*   Advanced memory techniques.
-*   GUI/Web interface (Streamlit/Flask).
-*   More sophisticated error handling and recovery.
-*   Fine-tuning embedding/LLM models.
+*   **Setup Data:** `python main.py process_guidelines` then `python main.py process_journals`
+*   **Create Plan:** `python main.py create_plan` (Resets statuses to 'pending')
+*   **Run Agent:** `python main.py run_agent [--max_iterations N] [--objective "Goal"]`
+*   **(Non-Agentic):** `python main.py generate_report` (Generates DOCX from plan, may need LLM refactor)
+*   **(Other):** `check_quality`, `create_visuals`, `manage_refs`

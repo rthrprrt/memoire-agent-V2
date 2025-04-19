@@ -1,131 +1,130 @@
+# report_generator.py (Version avec injection LLM LangChain)
+
 import config
-from llm_interface import GeminiLLM
+# Importer le type LangChain
+from langchain_core.language_models.chat_models import BaseChatModel
 from vector_database import VectorDBManager
-from data_models import ReportPlan, ReportSection, JournalEntry
+from data_models import ReportPlan, ReportSection # Assurez-vous que ReportSection est importé
 from typing import List, Optional
 import logging
-from docx import Document # For creating the DOCX output
-from docx.shared import Inches
+from docx import Document
+from docx.shared import Inches # Gardé si vous l'utilisez pour le formatage DOCX
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+log = logging.getLogger(__name__)
+if not log.handlers: logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [%(module)s] - %(message)s')
 
 class ReportGenerator:
-    """Generates the report content section by section."""
+    """Generates the report content section by section (Non-Agentic Command)."""
 
-    def __init__(self, vector_db: VectorDBManager):
-        self.llm = GeminiLLM()
+    def __init__(self, vector_db: VectorDBManager, llm_instance: BaseChatModel):
+        """Initializes with VectorDB and LangChain LLM instances."""
+        if not vector_db: raise ValueError("VectorDBManager instance required.")
+        if not llm_instance: raise ValueError("LLM instance required.")
         self.vector_db = vector_db
+        self.llm = llm_instance # Utilise l'instance injectée
+        log.info("ReportGenerator initialized with VectorDB and LLM.")
 
-    def _get_context_for_section(self, section_title: str, k: int = 7) -> List[str]:
-        """Retrieves relevant text chunks from the vector database for a section title."""
-        logging.debug(f"Searching vector DB for context related to: '{section_title}'")
-        # Enhance query if needed (e.g., add keywords from parent sections)
-        search_results = self.vector_db.search(query=section_title, k=k)
-        context_chunks = [result['document'] for result in search_results]
-        logging.debug(f"Retrieved {len(context_chunks)} context chunks.")
-        return context_chunks
+    def _get_context_for_section(self, section_title: str, k_guidelines: int = 3, k_journals: int = 7) -> str:
+        """Retrieves relevant text chunks from vector DBs for a section title."""
+        log.debug(f"Getting context for section: '{section_title}'")
+        guideline_context = "Not searched."; journal_context = "Not searched."
+        try:
+            guideline_results = self.vector_db.search_references(query=section_title, k=k_guidelines)
+            if guideline_results: guideline_context = "\n---\n".join([r.get("document","") for r in guideline_results])
+            else: guideline_context = "No relevant guidelines found."
+        except Exception as e: guideline_context = f"Error searching guidelines: {e}"; log.error(e, exc_info=True)
+        try:
+            journal_results = self.vector_db.search_journals(query=section_title, k=k_journals)
+            if journal_results: journal_context = "\n---\n".join([r.get("document","") for r in journal_results])
+            else: journal_context = "No relevant journal entries found."
+        except Exception as e: journal_context = f"Error searching journals: {e}"; log.error(e, exc_info=True)
+
+        combined = f"GUIDELINES CONTEXT:\n{guideline_context}\n\nJOURNAL ENTRIES CONTEXT:\n{journal_context}"
+        log.debug(f"Context length for '{section_title}': {len(combined)}")
+        return combined
+
 
     def _generate_section_content(self, section: ReportSection, report_plan: ReportPlan) -> Optional[str]:
         """Generates content for a single section using LLM and context."""
-        logging.info(f"Generating content for section: '{section.title}' (Level {section.level})")
+        section_title = getattr(section, 'title', 'Untitled Section')
+        log.info(f"Generating content for section: '{section_title}'...")
 
-        # --- Special Handling for certain sections ---
-        if section.title.lower() == "bibliography":
-             logging.info("Skipping generation for Bibliography section (handled separately).")
-             return "(Bibliography content will be generated later)"
-        if section.title.lower() == "introduction":
-             # Might need broader context or specific instructions
-             context_chunks = self._get_context_for_section(f"Overall apprenticeship summary, goals, {section.title}", k=10)
-             instructions = "Write a compelling introduction outlining the report's purpose, the apprenticeship context (AI Project Officer at Gecina), and the report's structure."
-        elif "project" in section.title.lower():
-            # Be more specific in context search for projects
-            context_chunks = self._get_context_for_section(f"Details about {section.title}, tasks, outcomes, AI usage", k=10)
-            instructions = "Describe the project, focusing on objectives, methodology, your specific contributions (especially AI-related), challenges, and results. Use details from the journal context."
-        elif "skills developed" in section.title.lower() or "competencies" in section.title.lower():
-             context_chunks = self._get_context_for_section(f"Examples of {section.title}, learning experiences, technical skills, soft skills", k=10)
-             instructions = f"Detail the key skills (like {', '.join(config.COMPETENCIES_TO_TRACK[:3])}...) developed during the apprenticeship, providing specific examples from the journal context."
-        else:
-            # Default context retrieval
-            context_chunks = self._get_context_for_section(section.title, k=7)
-            instructions = None # Use default prompt instructions
+        # Gérer sections spéciales (Biblio, Appendices n'ont pas besoin de génération LLM ici)
+        if section_title.lower() in ["bibliography", "appendices (optional)"]:
+             log.info(f"Skipping LLM generation for section '{section_title}'.")
+             # On pourrait mettre un placeholder ou retourner None pour que generate_full_report l'ignore
+             return f"({section_title} content to be added manually or via ReferenceManager)."
 
-        if not context_chunks:
-            logging.warning(f"No context found for section '{section.title}'. Generation might be poor.")
-            # Optionally, try a broader search or skip generation
-            # return None # Or attempt generation without specific context
+        # 1. Récupérer le contexte
+        context = self._get_context_for_section(section_title)
 
-        # Get overall structure for context
-        all_section_titles = [s.title for s in report_plan.structure] # Top level only for brevity
+        # 2. Préparer le prompt pour Gemini (via LangChain)
+        instructions = f"Draft the content for the report section titled '{section_title}'. Use the provided context. Maintain a professional and academic tone. Synthesize information."
+        system_instructions = "You are an AI assistant writing a section for a professional MSc report based *only* on provided context."
+        user_prompt = f"{instructions}\n\nCONTEXT:\n---\n{context[:15000]}\n---\n\nDraft for section \"{section_title}\":"
+        full_prompt = f"System Instructions:\n{system_instructions}\n\nUser Request:\n{user_prompt}"
 
-        draft_content = self.llm.draft_report_section(
-            section_title=section.title,
-            context_chunks=context_chunks,
-            report_structure=all_section_titles,
-            instructions=instructions
-        )
+        # 3. Appeler le LLM via LangChain
+        try:
+            response_msg = self.llm.invoke(full_prompt)
+            drafted_content = getattr(response_msg, 'content', None)
 
-        if draft_content:
-            logging.info(f"Successfully drafted content for '{section.title}'. Length: {len(draft_content)} chars.")
-            # Basic post-processing (optional)
-            # draft_content = draft_content.replace("...", " ") # Example cleanup
-            return draft_content
-        else:
-            logging.error(f"Failed to generate content for section '{section.title}'.")
-            return None
+            if drafted_content:
+                log.info(f"Successfully drafted content for '{section_title}'. Length: {len(drafted_content)}.")
+                return drafted_content
+            else:
+                log.error(f"LLM returned empty or invalid response for section '{section_title}'. Response: {response_msg}")
+                return None # Échec de la génération
+        except Exception as e:
+            log.error(f"LLM call failed during drafting section '{section_title}': {e}", exc_info=True)
+            return None # Échec de la génération
 
 
-    def generate_full_report(self, report_plan: ReportPlan, output_docx_path: str = config.DEFAULT_REPORT_OUTPUT):
+    def generate_full_report(self, report_plan: ReportPlan, output_docx_path: str = config.DEFAULT_REPORT_OUTPUT) -> ReportPlan:
         """Generates content for all sections and saves to a DOCX file."""
-        logging.info("Starting full report generation...")
+        log.info("Starting full report generation (non-agentic)...")
         document = Document()
-        document.add_heading(report_plan.title, level=0)
+        # Utiliser le titre du plan s'il existe
+        report_title = getattr(report_plan, 'title', "Apprenticeship Report")
+        document.add_heading(report_title, level=0)
 
-        # Store generated content back into the plan object temporarily
-        generated_content_map = {} # title: content
-
-        def process_section(section: ReportSection, current_level: int):
-            nonlocal document
+        # Fonction récursive pour traiter les sections
+        def process_and_add_section(section: ReportSection):
+            # Générer le contenu seulement si pas déjà présent ou si statut est 'pending'/'failed'?
+            # Pour cette commande non-agentique, on regénère tout.
             content = self._generate_section_content(section, report_plan)
+            section.content = content # Stocke le contenu (ou None) dans l'objet plan
             if content:
-                 generated_content_map[section.title] = content
-                 section.content = content # Update the plan object directly if desired
                  section.status = "drafted"
                  try:
-                     # Add heading (adjust level based on plan, max Word level is 9)
-                     heading_level = min(section.level, 9)
-                     if heading_level > 0: # Don't add heading for level 0 (report title)
-                         document.add_heading(section.title, level=heading_level)
-                     # Add content paragraph(s)
-                     # Split content by newline to create paragraphs, but be careful with formatting
-                     paragraphs = content.split('\n')
-                     for para in paragraphs:
-                         if para.strip(): # Avoid adding empty paragraphs
-                             document.add_paragraph(para)
-                     document.add_paragraph() # Add space after section
-                 except Exception as e:
-                      logging.error(f"Error adding section '{section.title}' to DOCX: {e}")
+                     heading_level = min(getattr(section, 'level', 1), 9) # Utiliser niveau de la section
+                     if heading_level > 0: document.add_heading(section.title, level=heading_level)
+                     # Ajouter paragraphes
+                     for para in content.split('\n'):
+                         if para.strip(): document.add_paragraph(para)
+                     document.add_paragraph() # Espace après section
+                 except Exception as e_docx: log.error(f"Error adding section '{section.title}' to DOCX: {e_docx}")
             else:
                 section.status = "failed"
-                logging.error(f"Skipping section '{section.title}' in DOCX due to generation failure.")
+                log.error(f"Skipping section '{section.title}' in DOCX due to generation failure.")
 
+            # Traiter les sous-sections
+            if hasattr(section, 'subsections') and section.subsections:
+                 for subsection in section.subsections:
+                      process_and_add_section(subsection)
 
-            for subsection in section.subsections:
-                process_section(subsection, current_level + 1)
+        # Traiter toutes les sections du plan
+        if hasattr(report_plan, 'structure'):
+             for top_section in report_plan.structure:
+                  process_and_add_section(top_section)
 
-        # Iterate through the top-level sections
-        for top_section in report_plan.structure:
-            process_section(top_section, 1) # Start with level 1
+        # TODO: Ajouter la bibliographie ici en utilisant ReferenceManager
 
-        # TODO: Add Bibliography generation here using reference_manager
-        # bib_content = ReferenceManager().generate_bibliography_text(citations)
-        # document.add_heading("Bibliography", level=1)
-        # document.add_paragraph(bib_content)
-
-        # Save the document
+        # Sauvegarder le document DOCX
         try:
             document.save(output_docx_path)
-            logging.info(f"Report draft saved successfully to {output_docx_path}")
-        except Exception as e:
-            logging.error(f"Error saving DOCX file {output_docx_path}: {e}")
+            log.info(f"Report draft saved successfully to {output_docx_path}")
+        except Exception as e_save:
+            log.error(f"Error saving DOCX file {output_docx_path}: {e_save}", exc_info=True)
 
-        return report_plan # Return the plan with updated statuses and content
+        return report_plan # Retourne le plan mis à jour avec contenu et statuts

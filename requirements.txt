@@ -16,3 +16,6 @@ transformers
 PyPDF2
 # Nécessaires pour Utiliser l'API Google AI (Gemini)
 google-generativeai
+langchain
+langchain-community
+langchain-google-genai
