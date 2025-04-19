@@ -1,4 +1,4 @@
-# main.py (Version LangChain Agent + Injection Dépendances Outils)
+# main.py (Version LangChain Agent + Injection Dépendances Outils + Commande Assemble)
 
 import argparse
 import logging
@@ -25,7 +25,8 @@ from tag_generator import TagGenerator
 from competency_mapper import CompetencyMapper
 from content_analyzer import ContentAnalyzer
 from report_planner import ReportPlanner
-from report_generator import ReportGenerator
+# <--- AJOUT : Importer la nouvelle fonction d'assemblage
+from report_generator import ReportGenerator, assemble_report_from_plan
 from quality_checker import QualityChecker
 from visualization import Visualizer
 from reference_manager import ReferenceManager
@@ -48,18 +49,34 @@ def main():
     # --- Configuration du Parseur d'Arguments ---
     parser = argparse.ArgumentParser(description="AI Agent (Local Embeddings, Gemini LLM via LangChain)")
     subparsers = parser.add_subparsers(dest="command", help="Available commands", required=True)
-    # (Définitions des subparsers - inchangées)
+
+    # --- Définitions des subparsers ---
     parser_process = subparsers.add_parser("process_journals", help="Process journals, get tags/competencies (LLM), store with local embeddings.")
     parser_process.add_argument("--journal_dir", default=config.JOURNAL_DIR); parser_process.add_argument("--reprocess_all", action="store_true")
+
     parser_guidelines = subparsers.add_parser("process_guidelines", help="Process guidelines PDF, store with local embeddings.")
     parser_guidelines.add_argument("--pdf_path", default=config.GUIDELINES_PDF_PATH); parser_guidelines.add_argument("--reprocess", action="store_true")
+
     parser_plan = subparsers.add_parser("create_plan", help="Generate report plan JSON with unique IDs."); parser_plan.add_argument("--requirements_file", default=None); parser_plan.add_argument("--output_plan_file", default=config.DEFAULT_PLAN_FILE)
+
     parser_generate = subparsers.add_parser("generate_report", help="Generate full report draft (non-agentic)."); parser_generate.add_argument("--plan_file", default=config.DEFAULT_PLAN_FILE); parser_generate.add_argument("--output_file", default=config.DEFAULT_REPORT_OUTPUT)
+
+    # <--- AJOUT : Subparser pour assemble_report ---
+    parser_assemble = subparsers.add_parser("assemble_report", help="Assemble final DOCX report from a completed plan JSON file.")
+    parser_assemble.add_argument("--plan_file", default=config.DEFAULT_PLAN_FILE, help="Path to the JSON report plan file with content.")
+    parser_assemble.add_argument("--output_file", default=config.DEFAULT_REPORT_OUTPUT, help="Path to save the final assembled DOCX report.")
+    # <--- FIN AJOUT ---
+
     parser_quality = subparsers.add_parser("check_quality", help="Run quality checks on draft."); parser_quality.add_argument("--report_file", default=config.DEFAULT_REPORT_OUTPUT); parser_quality.add_argument("--plan_file", default=config.DEFAULT_PLAN_FILE); parser_quality.add_argument("--skip_journal_load", action="store_true")
+
     parser_visuals = subparsers.add_parser("create_visuals", help="Generate visualizations."); parser_visuals.add_argument("--skip_journal_load", action="store_true")
+
     parser_refs = subparsers.add_parser("manage_refs", help="Manage bibliography."); ref_subparsers = parser_refs.add_subparsers(dest="ref_command", required=True); parser_add_ref = ref_subparsers.add_parser("add"); parser_add_ref.add_argument("--key", required=True); parser_add_ref.add_argument("--type", required=True, choices=['book', 'article', 'web', 'report', 'other']); parser_add_ref.add_argument("--author", required=True); parser_add_ref.add_argument("--year", required=True, type=int); parser_add_ref.add_argument("--title", required=True); parser_add_ref.add_argument("--data", default="{}"); parser_list_ref = ref_subparsers.add_parser("list")
+
     parser_agent = subparsers.add_parser("run_agent", help="Run agentic workflow using LangChain."); parser_agent.add_argument("--max_iterations", type=int, default=50); parser_agent.add_argument("--objective", default="Generate the full apprenticeship report section by section according to the plan.")
+
     parser_full = subparsers.add_parser("run_all", help="Run core pipeline (proc_journ, proc_guide, plan, gen_report)."); parser_full.add_argument("--journal_dir", default=config.JOURNAL_DIR); parser_full.add_argument("--output_file", default=config.DEFAULT_REPORT_OUTPUT); parser_full.add_argument("--reprocess", action="store_true"); parser_full.add_argument("--skip_guidelines", action="store_true")
+
     args = parser.parse_args()
 
     # --- Initialisation Différée des Composants (dans chaque commande si besoin) ---
@@ -90,6 +107,17 @@ def main():
              if args.requirements_file: log.warning("Loading structure from file NI.")
              report_plan = planner.create_base_plan(); memory_manager.save_report_plan(report_plan, args.output_plan_file)
              log.info(f"Plan saved to {args.output_plan_file}"); print(f"\nPlan saved: {args.output_plan_file}")
+
+        # <--- AJOUT : Bloc d'exécution pour assemble_report ---
+        elif args.command == "assemble_report":
+            log.info("--- Command: assemble_report ---")
+            log.info(f"Assembling report from plan: {args.plan_file}")
+            log.info(f"Output DOCX will be saved to: {args.output_file}")
+            # Appeler la fonction d'assemblage
+            assemble_report_from_plan(args.plan_file, args.output_file)
+            log.info("--- Report assembly finished ---")
+            print(f"\nReport assembled and saved to: {args.output_file}")
+        # <--- FIN AJOUT ---
 
         # ... (Autres commandes non-agentiques - nécessitent initialisation de leurs dépendances) ...
 

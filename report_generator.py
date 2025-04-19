@@ -1,14 +1,16 @@
-# report_generator.py (Version avec injection LLM LangChain)
+# report_generator.py (Version avec injection LLM LangChain + Fonction d'assemblage)
 
 import config
 # Importer le type LangChain
 from langchain_core.language_models.chat_models import BaseChatModel
 from vector_database import VectorDBManager
 from data_models import ReportPlan, ReportSection # Assurez-vous que ReportSection est importé
+from memory_manager import MemoryManager # <--- AJOUT : Pour charger le plan
 from typing import List, Optional
 import logging
 from docx import Document
-from docx.shared import Inches # Gardé si vous l'utilisez pour le formatage DOCX
+from docx.shared import Inches, Pt # <--- AJOUT : Pt pour la taille de police
+from docx.enum.text import WD_PARAGRAPH_ALIGNMENT # <--- AJOUT : Pour l'alignement
 
 log = logging.getLogger(__name__)
 if not log.handlers: logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [%(module)s] - %(message)s')
@@ -128,3 +130,97 @@ class ReportGenerator:
             log.error(f"Error saving DOCX file {output_docx_path}: {e_save}", exc_info=True)
 
         return report_plan # Retourne le plan mis à jour avec contenu et statuts
+
+
+# --- AJOUT : Fonction pour assembler le rapport depuis le plan JSON ---
+def assemble_report_from_plan(plan_filepath: str, output_docx_path: str):
+    """
+    Assembles a DOCX report from a ReportPlan JSON file that already contains
+    the content for each section.
+    """
+    log.info(f"Loading report plan from: {plan_filepath}")
+    memory_manager = MemoryManager() # Utiliser le manager pour charger proprement
+    report_plan = memory_manager.load_report_plan(plan_filepath)
+
+    if not report_plan:
+        log.error(f"Failed to load report plan from {plan_filepath}. Assembly aborted.")
+        raise FileNotFoundError(f"Report plan file not found or invalid: {plan_filepath}")
+
+    log.info("Initializing DOCX document...")
+    document = Document()
+
+    # --- Style de base (optionnel, à adapter) ---
+    style = document.styles['Normal']
+    font = style.font
+    font.name = 'Times New Roman'
+    font.size = Pt(12)
+    paragraph_format = style.paragraph_format
+    paragraph_format.line_spacing = 1.5
+    paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY # Justifier le texte
+
+    # --- Ajout du Titre Principal ---
+    report_title = getattr(report_plan, 'title', "Apprenticeship Report")
+    document.add_heading(report_title, level=0)
+    document.add_paragraph() # Espace après le titre
+
+    # --- Fonction Récursive pour Ajouter les Sections ---
+    def add_section_to_doc(section: ReportSection):
+        title = getattr(section, 'title', 'Untitled Section')
+        level = getattr(section, 'level', 1)
+        content = getattr(section, 'content', None) # Récupérer le contenu sauvegardé
+
+        log.debug(f"Adding section L{level}: '{title}'")
+        try:
+            # Ajouter le titre de la section
+            heading_level = min(level, 9) # Limiter le niveau de titre à 9
+            if heading_level > 0:
+                document.add_heading(title, level=heading_level)
+
+            # Ajouter le contenu de la section s'il existe
+            if content and isinstance(content, str) and content.strip():
+                # Ajouter les paragraphes
+                for para_text in content.split('\n'):
+                    if para_text.strip(): # Éviter les paragraphes vides
+                        p = document.add_paragraph(para_text.strip())
+                        p.style = document.styles['Normal'] # Appliquer le style normal
+                        p.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
+            elif title.lower() not in ["bibliography", "appendices (optional)"]:
+                # Ajouter un placeholder si le contenu est manquant (sauf pour biblio/annexes)
+                log.warning(f"Content missing for section '{title}' (ID: {getattr(section, 'section_id', 'N/A')}). Adding placeholder.")
+                p = document.add_paragraph(f"[Content for '{title}' to be added]")
+                p.style = document.styles['Normal']
+                p.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
+            else:
+                 # Placeholder spécifique pour Biblio/Annexes si vide
+                 p = document.add_paragraph(f"[{title} section content goes here]")
+                 p.style = document.styles['Normal']
+                 p.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
+
+
+            document.add_paragraph() # Ajouter un espace après chaque section
+
+        except Exception as e_docx:
+            log.error(f"Error adding section '{title}' to DOCX: {e_docx}", exc_info=True)
+
+        # Traiter les sous-sections récursivement
+        if hasattr(section, 'subsections') and section.subsections:
+            for subsection in section.subsections:
+                add_section_to_doc(subsection)
+
+    # --- Lancer l'assemblage depuis la racine ---
+    if hasattr(report_plan, 'structure'):
+        for top_section in report_plan.structure:
+            add_section_to_doc(top_section)
+    else:
+        log.warning("Report plan structure is empty. The generated document will be minimal.")
+
+    # --- Sauvegarder le Document Final ---
+    try:
+        log.info(f"Saving assembled report to: {output_docx_path}")
+        document.save(output_docx_path)
+        log.info("DOCX file saved successfully.")
+    except Exception as e_save:
+        log.error(f"Error saving final DOCX file {output_docx_path}: {e_save}", exc_info=True)
+        raise # Renvoyer l'erreur pour que main.py puisse la logger
+
+# --- FIN AJOUT ---
