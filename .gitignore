@@ -18,10 +18,12 @@ Thumbs.db
 # Fichiers de sauvegarde éditeur
 *.bak
 *.swp
-# Fichiers d'index divers
+# Tous les fichiers d'index .idx
+.idx
 *.idx
-# Configuration VSCode
+# Configuration VSCode complète
 .vscode/
+.vscode
 # Configuration JetBrains IDEs
 .idea/
 
@@ -34,8 +36,10 @@ __pycache__/
 # --- Données / Sorties / Logs Spécifiques au Projet ---
 # Dossier de sortie principal (rapports, plans...)
 /output/
-# Historique des sorties (si utilisé)
+output/
+# Historique des sorties
 /output_history/
+output_history/
 # Base de données vectorielle locale
 /vector_db/
 # Fichiers de logs génériques
