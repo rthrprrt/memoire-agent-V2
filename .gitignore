@@ -8,6 +8,7 @@ venv/
 # Sorties et Bases de Données Locales
 /output/
 /vector_db/
+/output_history/
 *.log
 references.json
 
@@ -26,5 +27,6 @@ __pycache__/
 Thumbs.db
 *.bak
 *.swp
-/.vscode/
+.vscode/ 
 /.idea/
+*.idx
