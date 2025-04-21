@@ -1,32 +1,44 @@
-# Secrets
+# --- Secrets ---
+# Ne jamais commiter les clés d'API ou mots de passe
 .env
 
-# Environnement Virtuel Python
+# --- Environnements Virtuels Python ---
+# Ignorer les environnements virtuels locaux
 /.venv/
+/venv/
 venv/
 
-# Sorties et Bases de Données Locales
-/output/
-/vector_db/
-/output_history/
-*.log
-references.json
+# --- Fichiers OS / IDE / Temporaires ---
+# Fichiers macOS
+.DS_Store
+# Fichiers Windows
+Thumbs.db
+# Fichiers temporaires Word/Office
+~$*.docx
+# Fichiers de sauvegarde éditeur
+*.bak
+*.swp
+# Fichiers d'index divers
+*.idx
+# Configuration VSCode
+.vscode/
+# Configuration JetBrains IDEs
+.idea/
 
-# Fichiers Python Cache/Compilés
+# --- Fichiers Python Compilés / Cache ---
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
-# Journaux (NE PAS SUIVRE)
-/journals/
-
-# Fichiers Temporaires OS/IDE
-~$*.docx
-.DS_Store
-Thumbs.db
-*.bak
-*.swp
-.vscode/ 
-/.idea/
-*.idx
+# --- Données / Sorties / Logs Spécifiques au Projet ---
+# Dossier de sortie principal (rapports, plans...)
+/output/
+# Historique des sorties (si utilisé)
+/output_history/
+# Base de données vectorielle locale
+/vector_db/
+# Fichiers de logs génériques
+*.log
+# Fichier de références bibliographiques
+references.json
