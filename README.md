@@ -17,8 +17,49 @@ This AI agent aims to automate the creation of an MSc Apprenticeship Report ("Mi
 *   ⚠️ **Untested Workflow:** Due to the failure of `analyze_journals`, the main `run_agent` workflow (which depends on the holistic analysis JSON) has not been successfully tested with the new 2-step writing logic.
 *   ⚠️ **Content Quality (Anticipated):** Previous tests with simpler prompts showed mediocre content quality from the local LLM. Significant improvements are needed via better analysis, prompting, and potentially critique loops.
 
+```mermaid
+graph TD
+    subgraph CLI
+        A[main.py] -->|Commands| B[Agent Core]
+    end
+    
+    subgraph "Agent Core"
+        B -->|Orchestration| C[LangGraph]
+        C -->|State| D[Memory Manager]
+        C -->|Tools| E[Agent Tools]
+        
+        C -->|LLM Requests| F[LLM Service]
+        F -->|API Calls| G[Ollama/Gemini]
+        
+        C -->|Processing| H[Document Processor]
+        H -->|Text Extract| I[DOCX/PDF Extract]
+        I -->|Analysis| J[Content Analysis]
+        J -->|Tags/Data| D
+        
+        C -->|Search| D
+        D -->|Vector Search| K[ChromaDB]
+        
+        C -->|Generate| L[Report Generator]
+        L -->|Assembly| M[DOCX Output]
+    end
+    
+    subgraph "Data Storage"
+        K -->|Collections| N[Journal Vectors]
+        K -->|Collections| O[Reference Vectors]
+        D -->|JSON| P[Plan Files]
+        D -->|Config| Q[Settings]
+    end
+    
+    subgraph "External Services"
+        G -->|Models| R[Local Ollama]
+        G -->|API| S[Google Gemini]
+        K -->|Embeddings| T[Sentence Transformers]
+    end
+    
+    M -->|Output| U[Final Reports]
+    P -->|Backup| V[Progress Tracking]
+```
 ## Revised Roadmap: Stabilize Analysis, Enhance Quality, Implement Control
-
 **Goal:** Achieve reliable autonomous report generation using a local LLM, produce high-quality, personalized, and anonymized content in French, and add advanced features.
 
 **Immediate Priority: Fix Holistic Analysis JSON Generation**
