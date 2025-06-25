@@ -59,6 +59,120 @@ graph TD
     M -->|Output| U[Final Reports]
     P -->|Backup| V[Progress Tracking]
 ```
+
+## Structure détaillée 
+```
+memoire-agent/
+├── backend/                     # Non implémenté (structure future)
+│   ├── api/                     # Définitions API FastAPI (futur)
+│   │   ├── dependencies.py      # Dépendances FastAPI
+│   │   ├── hallucination.py     # Fonctions pour la détection d'hallucinations
+│   │   └── models/              # Modèles Pydantic pour API
+│   │       ├── admin.py         # Modèles admin et maintenance
+│   │       ├── ai.py            # Modèles pour l'IA et génération
+│   │       ├── base.py          # Modèles de base partagés
+│   │       ├── export.py        # Modèles d'exportation
+│   │       ├── hallucination.py # Modèles détection d'hallucinations
+│   │       ├── journal.py       # Modèles pour journal de bord
+│   │       └── memoire.py       # Modèles pour sections du mémoire
+│   ├── routes/                  # Endpoints API
+│   │   ├── admin.py             # Routes administratives
+│   │   ├── ai.py                # Routes IA et génération
+│   │   ├── export.py            # Routes d'exportation
+│   │   ├── hallucination.py     # Routes détection d'hallucinations
+│   │   ├── journal.py           # Routes pour journal de bord
+│   │   ├── memoire.py           # Routes pour le mémoire
+│   │   └── search.py            # Routes de recherche
+│   └── utils/                   # Utilitaires API
+│       └── text_analysis.py     # Analyse des textes API
+│
+├── core/                        # Composants centraux
+│   ├── config.py                # Configuration application
+│   ├── dummy_vectordb.py        # Fallback ChromaDB
+│   ├── exceptions.py            # Exceptions personnalisées
+│   ├── logging.py               # Configuration logs centrale
+│   ├── logging_config.py        # Configuration logs avancée
+│   └── memory_manager.py        # Gestion de la mémoire vectorielle
+│
+├── data/                        # Données persistantes
+│   ├── memoire.db               # Base de données SQLite
+│   └── vectordb/                # Données vectorielles (ChromaDB)
+│
+├── db/                          # Couche d'accès aux données
+│   ├── database.py              # Gestionnaire de connexion BD
+│   ├── models/                  # Modèles de données
+│   │   └── db_models.py         # Définitions des modèles SQL
+│   └── repositories/            # Repositories (pattern DAO)
+│       ├── guidelines_repository.py    # Repository pour consignes
+│       ├── journal_repository.py       # Repository pour journal
+│       └── memoire_repository.py       # Repository pour mémoire
+│
+├── journals/                    # Dossier des journaux DOCX (entrée utilisateur)
+│   └── [YYYY-MM-DD.docx]        # Fichiers journaux au format date
+│
+├── output/                      # Fichiers de sortie générés
+│   ├── holistic_analysis.json   # Analyse holistique des journaux
+│   ├── holistic_analysis_raw.txt # Sortie brute LLM (debug)
+│   ├── report_plan.json         # Plan structuré du rapport
+│   └── apprenticeship_report.docx # Rapport final généré
+│
+├── logs/                        # Journaux application backend
+│
+├── schemas/                     # Schémas JSON pour communication
+│   ├── action_confirmation_request_schema.json
+│   ├── action_confirmation_response_schema.json
+│   ├── data_analysis_request_schema.json
+│   ├── data_analysis_response_schema.json
+│   ├── report_generation_request_schema.json
+│   ├── report_generation_response_schema.json
+│   ├── report_plan_change_notification_schema.json
+│   ├── report_plan_retrieval_request_schema.json
+│   ├── report_plan_retrieval_response_schema.json
+│   ├── report_plan_update_confirmation_schema.json
+│   ├── report_plan_update_request_schema.json
+│   ├── task_assignment_schema.json
+│   ├── task_completion_notification_schema.json
+│   ├── user_input_request_schema.json
+│   └── user_input_response_schema.json
+│
+├── services/                    # Services métier (futur backend)
+│
+├── scripts/                     # Scripts utilitaires
+│   ├── init.sh                  # Initialisation environnement
+│   └── run_tests.sh             # Exécution des tests
+│
+├── vector_db/                   # Base de données vectorielle (ChromaDB)
+│   ├── [journal_entries]/       # Collection des journaux vectorisés
+│   └── [reference_docs]/        # Collection des documents de référence
+│
+├── .github/workflows/           # CI/CD Pipeline
+│   └── main.yml                 # Workflow GitHub Actions
+│
+├── .gitignore                   # Fichiers ignorés par Git
+├── LICENSE                      # Licence MIT
+├── README.md                    # Documentation principale
+├── requirements.txt             # Dépendances Python
+│
+# === MODULES PYTHON PRINCIPAUX ===
+├── main.py                      # Point d'entrée principal - CLI & LangGraph workflow
+├── agent_tools.py               # Outils pour l'agent LangGraph
+├── competency_mapper.py         # Mapping des compétences (LLM)
+├── content_analyzer.py          # Analyse de contenu (LLM)
+├── data_models.py               # Modèles Pydantic (JournalEntry, ReportPlan, etc.)
+├── document_processor.py        # Traitement DOCX/PDF
+├── llm_interface.py             # Interface unifiée LLM (Ollama/Google)
+├── memory_manager.py            # Gestionnaire d'état et persistance JSON
+├── progress_tracker.py          # Suivi de progression du rapport
+├── quality_checker.py           # Vérification qualité (LLM)
+├── reference_manager.py         # Gestion bibliographie Harvard
+├── rename_journals.py           # Script de renommage des journaux
+├── report_generator.py          # Génération rapport final + assemblage
+├── report_planner.py            # Création plan de rapport structuré
+├── tag_generator.py             # Génération de tags (LLM)
+├── vector_database.py           # Gestionnaire ChromaDB avec embeddings locaux
+└── visualization.py             # Visualisations matplotlib
+```
+
 ## Revised Roadmap: Stabilize Analysis, Enhance Quality, Implement Control
 **Goal:** Achieve reliable autonomous report generation using a local LLM, produce high-quality, personalized, and anonymized content in French, and add advanced features.
 
